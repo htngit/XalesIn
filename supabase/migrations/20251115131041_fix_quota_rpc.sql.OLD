@@ -1,0 +1,22 @@
+-- Fix RPC function untuk include missing quota_id dan master_user_id
+CREATE OR REPLACE FUNCTION public.check_quota_usage(p_user_id UUID)
+RETURNS TABLE (
+    quota_id UUID,
+    messages_remaining INTEGER,
+    plan_type TEXT,
+    reset_date DATE,
+    master_user_id UUID
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        uq.id as quota_id,
+        uq.messages_limit - uq.messages_used as messages_remaining,
+        uq.plan_type,
+        uq.reset_date,
+        uq.master_user_id
+    FROM public.user_quotas uq
+    WHERE uq.user_id = p_user_id 
+    AND uq.is_active = true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

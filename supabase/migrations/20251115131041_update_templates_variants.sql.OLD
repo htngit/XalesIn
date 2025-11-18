@@ -1,0 +1,17 @@
+-- Update templates table to support variants
+ALTER TABLE public.templates 
+ADD COLUMN IF NOT EXISTS variants TEXT[],
+ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general';
+
+-- Update existing content to first variant
+UPDATE public.templates 
+SET variants = ARRAY[content] 
+WHERE variants IS NULL;
+
+-- Make content nullable since we'll use variants
+ALTER TABLE public.templates 
+ALTER COLUMN content DROP NOT NULL;
+
+-- Update category index
+DROP INDEX IF EXISTS idx_templates_category;
+CREATE INDEX idx_templates_category ON public.templates(category);

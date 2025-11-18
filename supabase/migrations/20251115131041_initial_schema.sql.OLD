@@ -1,0 +1,592 @@
+-- Enable necessary extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ============================================================================
+-- CORE TABLES
+-- ============================================================================
+
+-- Profiles table (extends auth.users)
+CREATE TABLE public.profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'staff')) DEFAULT 'staff',
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    phone_number TEXT,
+    avatar_url TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- User quotas table
+CREATE TABLE public.user_quotas (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('basic', 'premium', 'enterprise')) DEFAULT 'basic',
+    messages_limit INTEGER NOT NULL DEFAULT 1000,
+    messages_used INTEGER NOT NULL DEFAULT 0,
+    reset_date DATE NOT NULL DEFAULT CURRENT_DATE + INTERVAL '1 month',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, master_user_id)
+);
+
+-- Payments table
+CREATE TABLE public.payments (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    payment_id TEXT UNIQUE NOT NULL,
+    duitku_transaction_id TEXT,
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('basic', 'premium', 'enterprise')),
+    amount DECIMAL(10,2) NOT NULL,
+    currency TEXT DEFAULT 'IDR',
+    status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'expired')) DEFAULT 'pending',
+    payment_method TEXT,
+    qr_url TEXT,
+    payment_url TEXT,
+    expires_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contact groups table
+CREATE TABLE public.groups (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT DEFAULT '#3b82f6',
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    contact_count INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contacts table
+CREATE TABLE public.contacts (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    tags TEXT[],
+    notes TEXT,
+    is_blocked BOOLEAN DEFAULT false,
+    last_interaction TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(phone, master_user_id)
+);
+
+-- Templates table
+CREATE TABLE public.templates (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    attachment_url TEXT,
+    variables TEXT[],
+    category TEXT DEFAULT 'general',
+    is_active BOOLEAN DEFAULT true,
+    usage_count INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Assets table
+CREATE TABLE public.assets (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size BIGINT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    uploaded_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('image', 'video', 'audio', 'document', 'other')) DEFAULT 'other',
+    mime_type TEXT,
+    is_public BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- History/Activity logs table
+CREATE TABLE public.history (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    master_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    contact_group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
+    template_id UUID REFERENCES public.templates(id) ON DELETE CASCADE,
+    template_name TEXT,
+    total_contacts INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')) DEFAULT 'pending',
+    delay_range INTEGER DEFAULT 30,
+    scheduled_for TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    error_message TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================================
+-- INDEXES FOR PERFORMANCE
+-- ============================================================================
+
+-- Profiles indexes
+CREATE INDEX idx_profiles_master_user_id ON public.profiles(master_user_id);
+CREATE INDEX idx_profiles_role ON public.profiles(role);
+
+-- User quotas indexes
+CREATE INDEX idx_user_quotas_user_id ON public.user_quotas(user_id);
+CREATE INDEX idx_user_quotas_master_user_id ON public.user_quotas(master_user_id);
+CREATE INDEX idx_user_quotas_reset_date ON public.user_quotas(reset_date);
+
+-- Payments indexes
+CREATE INDEX idx_payments_user_id ON public.payments(user_id);
+CREATE INDEX idx_payments_master_user_id ON public.payments(master_user_id);
+CREATE INDEX idx_payments_status ON public.payments(status);
+CREATE INDEX idx_payments_payment_id ON public.payments(payment_id);
+
+-- Groups indexes
+CREATE INDEX idx_groups_master_user_id ON public.groups(master_user_id);
+CREATE INDEX idx_groups_created_by ON public.groups(created_by);
+
+-- Contacts indexes
+CREATE INDEX idx_contacts_group_id ON public.contacts(group_id);
+CREATE INDEX idx_contacts_master_user_id ON public.contacts(master_user_id);
+CREATE INDEX idx_contacts_created_by ON public.contacts(created_by);
+CREATE INDEX idx_contacts_phone ON public.contacts(phone);
+CREATE INDEX idx_contacts_tags ON public.contacts USING GIN(tags);
+
+-- Templates indexes
+CREATE INDEX idx_templates_master_user_id ON public.templates(master_user_id);
+CREATE INDEX idx_templates_created_by ON public.templates(created_by);
+CREATE INDEX idx_templates_category ON public.templates(category);
+
+-- Assets indexes
+CREATE INDEX idx_assets_master_user_id ON public.assets(master_user_id);
+CREATE INDEX idx_assets_uploaded_by ON public.assets(uploaded_by);
+CREATE INDEX idx_assets_category ON public.assets(category);
+
+-- History indexes
+CREATE INDEX idx_history_user_id ON public.history(user_id);
+CREATE INDEX idx_history_master_user_id ON public.history(master_user_id);
+CREATE INDEX idx_history_status ON public.history(status);
+CREATE INDEX idx_history_created_at ON public.history(created_at);
+
+-- ============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ============================================================================
+
+-- Enable RLS on all tables
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_quotas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.history ENABLE ROW LEVEL SECURITY;
+
+-- Profiles policies
+CREATE POLICY "Users can view their own profile" ON public.profiles
+    FOR SELECT USING (auth.uid() = id OR auth.uid() = master_user_id);
+
+CREATE POLICY "Users can update their own profile" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id OR auth.uid() = master_user_id);
+
+CREATE POLICY "Master users can insert profiles for their team" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = master_user_id);
+
+-- User quotas policies
+CREATE POLICY "Users can view their own quota" ON public.user_quotas
+    FOR SELECT USING (auth.uid() = user_id OR auth.uid() = master_user_id);
+
+CREATE POLICY "Service role can manage quotas" ON public.user_quotas
+    FOR ALL USING (auth.role() = 'service_role');
+
+-- Payments policies
+CREATE POLICY "Users can view their own payments" ON public.payments
+    FOR SELECT USING (auth.uid() = user_id OR auth.uid() = master_user_id);
+
+CREATE POLICY "Users can insert their own payments" ON public.payments
+    FOR INSERT WITH CHECK (auth.uid() = user_id OR auth.uid() = master_user_id);
+
+CREATE POLICY "Service role can update payments" ON public.payments
+    FOR UPDATE USING (auth.role() = 'service_role');
+
+-- Groups policies
+CREATE POLICY "Users can view groups from their master account" ON public.groups
+    FOR SELECT USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+CREATE POLICY "Users can manage groups in their master account" ON public.groups
+    FOR ALL USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+-- Contacts policies
+CREATE POLICY "Users can view contacts from their master account" ON public.contacts
+    FOR SELECT USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+CREATE POLICY "Users can manage contacts in their master account" ON public.contacts
+    FOR ALL USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+-- Templates policies
+CREATE POLICY "Users can view templates from their master account" ON public.templates
+    FOR SELECT USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+CREATE POLICY "Users can manage templates in their master account" ON public.templates
+    FOR ALL USING (auth.uid() = master_user_id OR auth.uid() = created_by);
+
+-- Assets policies
+CREATE POLICY "Users can view assets from their master account" ON public.assets
+    FOR SELECT USING (auth.uid() = master_user_id OR auth.uid() = uploaded_by);
+
+CREATE POLICY "Users can manage assets in their master account" ON public.assets
+    FOR ALL USING (auth.uid() = master_user_id OR auth.uid() = uploaded_by);
+
+-- History policies
+CREATE POLICY "Users can view history from their master account" ON public.history
+    FOR SELECT USING (auth.uid() = master_user_id OR auth.uid() = user_id);
+
+CREATE POLICY "Users can create history in their master account" ON public.history
+    FOR INSERT WITH CHECK (auth.uid() = master_user_id OR auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own history" ON public.history
+    FOR UPDATE USING (auth.uid() = master_user_id OR auth.uid() = user_id);
+
+-- ============================================================================
+-- RPC FUNCTIONS
+-- ============================================================================
+
+-- Function to check and update quota usage
+CREATE OR REPLACE FUNCTION public.check_quota_usage(p_user_id UUID)
+RETURNS TABLE (
+    messages_remaining INTEGER,
+    plan_type TEXT,
+    reset_date DATE
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        uq.messages_limit - uq.messages_used as messages_remaining,
+        uq.plan_type,
+        uq.reset_date
+    FROM public.user_quotas uq
+    WHERE uq.user_id = p_user_id 
+    AND uq.is_active = true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to reserve quota before sending
+CREATE OR REPLACE FUNCTION public.reserve_quota(
+    p_user_id UUID,
+    p_messages_count INTEGER DEFAULT 1
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    quota_id UUID,
+    messages_remaining INTEGER,
+    error_message TEXT
+) AS $$
+DECLARE
+    v_quota_id UUID;
+    v_messages_remaining INTEGER;
+    v_plan_type TEXT;
+    v_reset_date DATE;
+    v_success BOOLEAN := false;
+    v_error_message TEXT := NULL;
+BEGIN
+    -- Get current quota information
+    SELECT id, messages_limit - messages_used, plan_type, reset_date
+    INTO v_quota_id, v_messages_remaining, v_plan_type, v_reset_date
+    FROM public.user_quotas
+    WHERE user_id = p_user_id AND is_active = true;
+    
+    -- Check if quota exists and has enough messages
+    IF v_quota_id IS NULL THEN
+        v_error_message := 'No active quota found for user';
+    ELSIF v_messages_remaining < p_messages_count THEN
+        v_error_message := 'Insufficient quota. Remaining: ' || v_messages_remaining || ', Required: ' || p_messages_count;
+    ELSE
+        v_success := true;
+    END IF;
+    
+    -- Return result
+    RETURN QUERY SELECT v_success, v_quota_id, v_messages_remaining - p_messages_count, v_error_message;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to commit quota usage after successful send
+CREATE OR REPLACE FUNCTION public.commit_quota_usage(
+    p_quota_id UUID,
+    p_messages_used INTEGER DEFAULT 1
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    messages_remaining INTEGER,
+    error_message TEXT
+) AS $$
+DECLARE
+    v_messages_remaining INTEGER;
+    v_success BOOLEAN := false;
+    v_error_message TEXT := NULL;
+BEGIN
+    -- Update quota usage
+    UPDATE public.user_quotas
+    SET 
+        messages_used = messages_used + p_messages_used,
+        updated_at = NOW()
+    WHERE id = p_quota_id;
+    
+    -- Check if update was successful
+    IF FOUND THEN
+        -- Get updated remaining quota
+        SELECT messages_limit - messages_used
+        INTO v_messages_remaining
+        FROM public.user_quotas
+        WHERE id = p_quota_id;
+        
+        v_success := true;
+    ELSE
+        v_error_message := 'Failed to update quota usage';
+    END IF;
+    
+    -- Return result
+    RETURN QUERY SELECT v_success, v_messages_remaining, v_error_message;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to release quota reservation
+CREATE OR REPLACE FUNCTION public.release_quota_reservation(
+    p_quota_id UUID,
+    p_messages_reserved INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    messages_remaining INTEGER,
+    error_message TEXT
+) AS $$
+DECLARE
+    v_messages_remaining INTEGER;
+    v_success BOOLEAN := false;
+    v_error_message TEXT := NULL;
+BEGIN
+    -- Note: This function can be used if reservation fails
+    -- Currently, our quota system doesn't track reservations separately,
+    -- so this is a placeholder for future implementation
+    
+    -- Get current remaining quota
+    SELECT messages_limit - messages_used
+    INTO v_messages_remaining
+    FROM public.user_quotas
+    WHERE id = p_quota_id;
+    
+    IF v_messages_remaining IS NOT NULL THEN
+        v_success := true;
+    ELSE
+        v_error_message := 'Quota not found';
+    END IF;
+    
+    -- Return result
+    RETURN QUERY SELECT v_success, v_messages_remaining, v_error_message;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get user's activity statistics
+CREATE OR REPLACE FUNCTION public.get_user_activity_stats(
+    p_master_user_id UUID,
+    p_days_back INTEGER DEFAULT 30
+)
+RETURNS TABLE (
+    total_sends INTEGER,
+    successful_sends INTEGER,
+    failed_sends INTEGER,
+    messages_sent INTEGER,
+    active_templates INTEGER,
+    active_contacts INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        COUNT(*) as total_sends,
+        SUM(CASE WHEN h.status = 'completed' THEN 1 ELSE 0 END) as successful_sends,
+        SUM(CASE WHEN h.status = 'failed' THEN 1 ELSE 0 END) as failed_sends,
+        SUM(CASE WHEN h.status = 'completed' THEN h.success_count ELSE 0 END) as messages_sent,
+        (SELECT COUNT(*) FROM public.templates WHERE master_user_id = p_master_user_id AND is_active = true) as active_templates,
+        (SELECT COUNT(*) FROM public.contacts WHERE master_user_id = p_master_user_id AND is_blocked = false) as active_contacts
+    FROM public.history h
+    WHERE h.master_user_id = p_master_user_id
+    AND h.created_at >= NOW() - INTERVAL '1 day' * p_days_back;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to clean up expired payments
+CREATE OR REPLACE FUNCTION public.cleanup_expired_payments()
+RETURNS INTEGER AS $$
+DECLARE
+    v_deleted_count INTEGER := 0;
+BEGIN
+    UPDATE public.payments
+    SET status = 'expired', updated_at = NOW()
+    WHERE status = 'pending'
+    AND expires_at < NOW();
+    
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+    
+    RETURN v_deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to reset monthly quotas
+CREATE OR REPLACE FUNCTION public.reset_monthly_quotas()
+RETURNS INTEGER AS $$
+DECLARE
+    v_updated_count INTEGER := 0;
+BEGIN
+    UPDATE public.user_quotas
+    SET 
+        messages_used = 0,
+        reset_date = DATE_TRUNC('month', NOW()) + INTERVAL '1 month',
+        updated_at = NOW()
+    WHERE reset_date <= CURRENT_DATE;
+    
+    GET DIAGNOSTICS v_updated_count = ROW_COUNT;
+    
+    RETURN v_updated_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============================================================================
+-- TRIGGERS AND FUNCTIONS
+-- ============================================================================
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add updated_at triggers to relevant tables
+CREATE TRIGGER handle_profiles_updated_at
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_user_quotas_updated_at
+    BEFORE UPDATE ON public.user_quotas
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_payments_updated_at
+    BEFORE UPDATE ON public.payments
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_groups_updated_at
+    BEFORE UPDATE ON public.groups
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_contacts_updated_at
+    BEFORE UPDATE ON public.contacts
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_templates_updated_at
+    BEFORE UPDATE ON public.templates
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_assets_updated_at
+    BEFORE UPDATE ON public.assets
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_history_updated_at
+    BEFORE UPDATE ON public.history
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- Function to automatically create profile when user signs up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, name, role)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'name', 'User'),
+        'staff'
+    );
+    
+    -- Create initial quota for the new user
+    INSERT INTO public.user_quotas (user_id, master_user_id, plan_type, messages_limit)
+    VALUES (
+        NEW.id,
+        NEW.id,
+        'basic',
+        1000
+    );
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to create profile on user creation
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Function to automatically update contact count when contacts are added/removed
+CREATE OR REPLACE FUNCTION update_group_contact_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE public.groups 
+        SET contact_count = contact_count + 1 
+        WHERE id = NEW.group_id;
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE public.groups 
+        SET contact_count = contact_count - 1 
+        WHERE id = OLD.group_id;
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.group_id != NEW.group_id THEN
+            UPDATE public.groups SET contact_count = contact_count - 1 WHERE id = OLD.group_id;
+            UPDATE public.groups SET contact_count = contact_count + 1 WHERE id = NEW.group_id;
+        END IF;
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to update contact count
+CREATE TRIGGER update_group_contact_count_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON public.contacts
+    FOR EACH ROW EXECUTE FUNCTION update_group_contact_count();
+
+-- Function to track template usage
+CREATE OR REPLACE FUNCTION increment_template_usage()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE public.templates 
+    SET usage_count = usage_count + 1,
+        updated_at = NOW()
+    WHERE id = NEW.template_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to track template usage
+CREATE TRIGGER increment_template_usage_trigger
+    AFTER INSERT ON public.history
+    FOR EACH ROW EXECUTE FUNCTION increment_template_usage();
