@@ -381,13 +381,13 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
               </AnimatedCard>
 
               <AnimatedCard animation="slideUp" delay={0.4} className="h-[155px] flex flex-col justify-between">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0">
                   <CardTitle className="text-sm font-medium">Quota Remaining</CardTitle>
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent className="flex-1 flex flex-col justify-end">
+                <CardContent>
                   <div className="text-2xl font-bold">{stats.quotaRemaining.toLocaleString()}</div>
-                  <Progress value={quotaPercentage} className="mt-2" />
+                  <Progress value={quotaPercentage} />
                   <p className="text-xs text-muted-foreground mt-1">{quotaPercentage.toFixed(1)}% available</p>
                   {quota && (
                     <p className="text-xs text-muted-foreground">
