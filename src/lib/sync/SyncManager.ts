@@ -223,7 +223,7 @@ export class SyncManager {
       ...event,
       timestamp: new Date()
     };
-    
+
     this.eventListeners.forEach(listener => {
       try {
         listener(fullEvent);
@@ -610,7 +610,7 @@ export class SyncManager {
   private determineOperationPriority(operation: SyncOperation): SyncPriority {
     // Critical operations that affect user experience
     if (operation.operation === 'delete' ||
-        (operation.table === 'quotas' && operation.operation === 'update')) {
+      (operation.table === 'quotas' && operation.operation === 'update')) {
       return SyncPriority.CRITICAL;
     }
 
@@ -773,7 +773,7 @@ export class SyncManager {
   private async processOperation(operation: SyncOperation): Promise<void> {
     const table = operation.table;
     const recordId = operation.recordId;
-    
+
     switch (operation.operation) {
       case 'create':
         await this.pushCreate(table, recordId, operation.data);
@@ -802,10 +802,10 @@ export class SyncManager {
    */
   private async pushCreate(table: string, recordId: string, data: any): Promise<void> {
     const supabaseTable = this.mapTableName(table);
-    
+
     // Remove sync metadata before sending to server
-    const { _syncStatus, _lastModified, _version, _deleted, ...serverData } = data;
-    
+    const { _syncStatus, _lastModified, _version, _deleted, _compressed, assets, ...serverData } = data;
+
     const { error } = await supabase
       .from(supabaseTable)
       .insert(serverData);
@@ -818,11 +818,11 @@ export class SyncManager {
    */
   private async pushUpdate(table: string, recordId: string, data: any): Promise<void> {
     const supabaseTable = this.mapTableName(table);
-    
+
     // Remove sync metadata before sending to server
-    const { _syncStatus, _lastModified, _version, _deleted, ...serverData } = data;
+    const { _syncStatus, _lastModified, _version, _deleted, _compressed, assets, ...serverData } = data;
     serverData.updated_at = nowISO();
-    
+
     const { error } = await supabase
       .from(supabaseTable)
       .update(serverData)
@@ -836,7 +836,7 @@ export class SyncManager {
    */
   private async pushDelete(table: string, recordId: string): Promise<void> {
     const supabaseTable = this.mapTableName(table);
-    
+
     const { error } = await supabase
       .from(supabaseTable)
       .delete()

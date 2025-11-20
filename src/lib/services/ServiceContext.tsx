@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from 'react';
+import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { serviceManager } from './ServiceInitializationManager';
 import { TemplateService } from './TemplateService';
 import { ContactService } from './ContactService';
@@ -20,18 +20,43 @@ const ServiceContext = createContext<ServiceContextType | null>(null);
 /**
  * ServiceProvider - A pass-through provider that exposes initialized services
  * 
- * IMPORTANT: Services must already be initialized by Dashboard before this provider is rendered.
- * This component does NOT perform initialization - it only provides access to already-initialized services.
+ * Waits for services to be initialized by Dashboard before rendering children.
+ * Shows a loading screen if services are not yet ready.
  */
 export function ServiceProvider({ children }: { children: ReactNode }) {
-  // Services should already be initialized by Dashboard
-  // This is just a pass-through provider to make services available via context
+  const [isReady, setIsReady] = useState(false);
 
-  // Check if services are initialized
-  if (!serviceManager.isInitialized()) {
-    // This should never happen if the app flow is correct (Dashboard → ServiceProvider)
-    console.error('ServiceProvider rendered before services were initialized!');
-    throw new Error('Services must be initialized before rendering ServiceProvider. Ensure Dashboard completes initialization first.');
+  useEffect(() => {
+    // Check if services are already initialized
+    if (serviceManager.isInitialized()) {
+      setIsReady(true);
+      return;
+    }
+
+    // If not, wait for initialization with polling
+    console.warn('ServiceProvider waiting for services to initialize...');
+    const checkInterval = setInterval(() => {
+      if (serviceManager.isInitialized()) {
+        console.log('Services initialized, ServiceProvider ready');
+        setIsReady(true);
+        clearInterval(checkInterval);
+      }
+    }, 100); // Check every 100ms
+
+    // Cleanup on unmount
+    return () => clearInterval(checkInterval);
+  }, []);
+
+  // Show loading state while waiting for services
+  if (!isReady) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Initializing services...</p>
+        </div>
+      </div>
+    );
   }
 
   const services: ServiceContextType = {

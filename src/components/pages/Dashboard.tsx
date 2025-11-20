@@ -24,9 +24,7 @@ import {
   LogOut,
   Menu,
   X,
-  File,
-  Wifi,
-  WifiOff
+  File
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -304,10 +302,10 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         </Button>
       </header>
 
-      <div className="flex flex-1 relative">
+      <div className="flex flex-1 relative h-screen overflow-hidden">
         {/* Sidebar */}
         <aside className={`
-            fixed lg:static inset-y-0 left-0 z-10 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out
+            h-screen overflow-hidden fixed lg:static inset-y-0 left-0 z-10 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           `}>
           <div className="h-full flex flex-col">
@@ -336,22 +334,20 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
               </nav>
             </div>
 
-            <div className="p-4 border-t bg-gray-50">
+            <div className="p-2 border-t bg-gray-50">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <span className="font-semibold text-primary">{userName.charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{userName}</p>
+                  <p className="text-sm font-medium truncate pl-3 pb-1">{userName}</p>
                   <div className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <p className="text-xs text-muted-foreground">{isConnected ? 'Connected' : 'Disconnected'}</p>
+                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={onLogout}>
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
                   </div>
                 </div>
-                <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={onLogout}>
-                  <LogOut className="h-4 w-4" />
-                  Logout
-                </Button>
               </div>
             </div>
           </div>
@@ -370,19 +366,9 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 <h1 className="text-2xl font-bold tracking-tight">Dashboard Overview</h1>
                 <p className="text-muted-foreground">Welcome back! Here's what's happening with your campaigns.</p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsConnected(!isConnected)}>
-                  {isConnected ? <Wifi className="h-4 w-4 mr-2" /> : <WifiOff className="h-4 w-4 mr-2" />}
-                  {isConnected ? 'Connected' : 'Offline'}
-                </Button>
-                <Button onClick={() => navigate('/send')}>
-                  <Send className="h-4 w-4 mr-2" />
-                  New Campaign
-                </Button>
-              </div>
             </div>
 
-            {/* Stats Grid */}
+            {/* Stats G rid */}
             <Stagger>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>

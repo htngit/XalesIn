@@ -37,6 +37,14 @@ export function UserProvider({ children }: UserProviderProps) {
   const [masterUserId, setMasterUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Ref to track current user ID to avoid stale closures in useEffect
+  const currentUserIdRef = React.useRef<string | null>(null);
+
+  // Update ref when user state changes
+  useEffect(() => {
+    currentUserIdRef.current = user?.id || null;
+  }, [user]);
+
   /**
    * Fetch user profile from database
    */
@@ -82,10 +90,15 @@ export function UserProvider({ children }: UserProviderProps) {
   /**
    * Handle user sign in
    */
-  /**
-   * Handle user sign in
-   */
   const handleSignIn = async (authUser: any, sessionToken?: string) => {
+    // Prevent redundant fetching if user is already loaded
+    if (currentUserIdRef.current === authUser.id) {
+      console.log('User already loaded, skipping redundant fetch for:', authUser.id);
+      // Ensure loading is false just in case
+      setIsLoading(false);
+      return;
+    }
+
     try {
       console.log('handleSignIn started');
       setIsLoading(true);
