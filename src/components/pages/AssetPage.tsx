@@ -25,8 +25,7 @@ import {
   HardDrive,
   Zap,
   Download,
-  Trash2,
-  Eye
+  Trash2
 } from 'lucide-react';
 
 // Convert AssetFile interface to match the component's expected format
@@ -44,6 +43,7 @@ function AssetPageContent({
   isUploading,
   previewFile,
   isPreviewOpen,
+  setIsPreviewOpen,
   getRootProps,
   getInputProps,
   isDragActive,
@@ -60,6 +60,7 @@ function AssetPageContent({
   isUploading: boolean;
   previewFile: AssetFileLocal | null;
   isPreviewOpen: boolean;
+  setIsPreviewOpen: (value: boolean) => void;
   getRootProps: any;
   getInputProps: any;
   isDragActive: boolean;
@@ -210,7 +211,11 @@ function AssetPageContent({
                   {files.map((file) => {
                     const FileIcon = getFileIcon(file.category);
                     return (
-                      <div key={file.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow group">
+                      <div
+                        key={file.id}
+                        className="border rounded-lg p-4 hover:shadow-md transition-all group cursor-pointer hover:border-primary/50"
+                        onClick={() => handlePreviewFile(file)}
+                      >
                         {/* Thumbnail or Icon */}
                         <div className="mb-3">
                           {file.category === 'image' && file.url ? (
@@ -253,16 +258,7 @@ function AssetPageContent({
                           <span className="text-xs text-gray-400">
                             {file.uploadDate.toLocaleDateString()}
                           </span>
-                          <div className="flex space-x-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handlePreviewFile(file)}
-                              className="h-8 w-8 p-0"
-                              title="Preview"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                          <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -317,7 +313,7 @@ function AssetPageContent({
         <FilePreviewModal
           file={previewFile}
           isOpen={isPreviewOpen}
-          onClose={() => { }}
+          onClose={() => setIsPreviewOpen(false)}
           onDownload={() => previewFile && downloadFile(previewFile)}
         />
       </div>
@@ -679,6 +675,7 @@ export function AssetPage() {
       isUploading={isUploading}
       previewFile={previewFile}
       isPreviewOpen={isPreviewOpen}
+      setIsPreviewOpen={setIsPreviewOpen}
       getRootProps={getRootProps}
       getInputProps={getInputProps}
       isDragActive={isDragActive}

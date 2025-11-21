@@ -11,7 +11,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { FadeIn } from '@/components/ui/animations';
@@ -49,7 +49,6 @@ function SendPageContent({
   selectedTemplate,
   setSelectedTemplate,
   selectedAssets,
-  setSelectedAssets,
   delayRange,
   setDelayRange,
   isSending,
@@ -60,9 +59,6 @@ function SendPageContent({
   selectedGroupData,
   canSend,
   previewMessage,
-  getTargetContacts,
-  getSelectedTemplate,
-  getSelectedGroup,
   getSelectedAssets,
   toggleAssetSelection,
   getAssetIcon,
@@ -78,7 +74,6 @@ function SendPageContent({
   selectedTemplate: string;
   setSelectedTemplate: (id: string) => void;
   selectedAssets: string[];
-  setSelectedAssets: (ids: string[]) => void;
   delayRange: number[];
   setDelayRange: (range: number[]) => void;
   isSending: boolean;
@@ -89,9 +84,6 @@ function SendPageContent({
   selectedGroupData: ContactGroup | { name: string; color: string };
   canSend: boolean;
   previewMessage: () => string;
-  getTargetContacts: () => Contact[];
-  getSelectedTemplate: () => Template | undefined;
-  getSelectedGroup: () => ContactGroup | { name: string; color: string };
   getSelectedAssets: () => AssetFile[];
   toggleAssetSelection: (assetId: string) => void;
   getAssetIcon: (category: AssetFile['category']) => React.ComponentType<any>;
@@ -293,7 +285,7 @@ function SendPageContent({
                                       <Badge variant="outline" className="text-xs">
                                         {asset.category}
                                       </Badge>
-                                      <span>{formatFileSize(asset.size)}</span>
+                                      <span>{formatFileSize(asset.file_size)}</span>
                                     </div>
                                   </div>
                                   {isSelected && (
@@ -323,7 +315,7 @@ function SendPageContent({
                                   <IconComponent className="h-4 w-4 text-gray-600" />
                                   <div>
                                     <p className="text-sm font-medium">{asset.name}</p>
-                                    <p className="text-xs text-gray-500">{formatFileSize(asset.size)}</p>
+                                    <p className="text-xs text-gray-500">{formatFileSize(asset.file_size)}</p>
                                   </div>
                                 </div>
                                 <Button
@@ -528,7 +520,7 @@ function SendPageContent({
   );
 }
 
-export function SendPage({ userName }: SendPageProps) {
+export function SendPage({ userName: _userName }: SendPageProps) {
   const { contactService, templateService, quotaService, groupService, assetService, historyService, isInitialized } = useServices();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -756,7 +748,7 @@ export function SendPage({ userName }: SendPageProps) {
   const targetContacts = getTargetContacts();
   const selectedTemplateData = getSelectedTemplate();
   const selectedGroupData = getSelectedGroup();
-  const canSend = selectedTemplate && targetContacts.length > 0 && quota && quota.remaining >= targetContacts.length;
+  const canSend = !!(selectedTemplate && targetContacts.length > 0 && quota && quota.remaining >= targetContacts.length);
 
   if (isLoading) {
     return <LoadingScreen message="Loading send configuration..." />;
@@ -778,7 +770,6 @@ export function SendPage({ userName }: SendPageProps) {
       selectedTemplate={selectedTemplate}
       setSelectedTemplate={setSelectedTemplate}
       selectedAssets={selectedAssets}
-      setSelectedAssets={setSelectedAssets}
       delayRange={delayRange}
       setDelayRange={setDelayRange}
       isSending={isSending}
@@ -789,9 +780,6 @@ export function SendPage({ userName }: SendPageProps) {
       selectedGroupData={selectedGroupData}
       canSend={canSend}
       previewMessage={previewMessage}
-      getTargetContacts={getTargetContacts}
-      getSelectedTemplate={getSelectedTemplate}
-      getSelectedGroup={getSelectedGroup}
       getSelectedAssets={getSelectedAssets}
       toggleAssetSelection={toggleAssetSelection}
       getAssetIcon={getAssetIcon}
