@@ -793,6 +793,14 @@ export class SyncManager {
 
     // Remove sync metadata before sending to server
     const { _syncStatus, _lastModified, _version, _deleted, _compressed, _compressionKey, assets, ...serverData } = data;
+    
+    // Filter out legacy/local-only fields for assets table
+    if (table === 'assets') {
+      delete (serverData as any).size;
+      delete (serverData as any).type;
+      delete (serverData as any).url;
+      delete (serverData as any).uploadDate;
+    }
 
     const { error } = await supabase
       .from(supabaseTable)
@@ -810,6 +818,14 @@ export class SyncManager {
     // Remove sync metadata before sending to server
     const { _syncStatus, _lastModified, _version, _deleted, _compressed, _compressionKey, assets, ...serverData } = data;
     serverData.updated_at = nowISO();
+    
+    // Filter out legacy/local-only fields for assets table
+    if (table === 'assets') {
+      delete (serverData as any).size;
+      delete (serverData as any).type;
+      delete (serverData as any).url;
+      delete (serverData as any).uploadDate;
+    }
 
     const { error } = await supabase
       .from(supabaseTable)

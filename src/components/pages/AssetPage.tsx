@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AnimatedCard } from '@/components/ui/animated-card';
-import { AnimatedButton } from '@/components/ui/animated-button';
 import { FadeIn, Stagger } from '@/components/ui/animations';
 import { FilePreviewModal } from '@/components/ui/FilePreviewModal';
 import {
@@ -34,6 +33,8 @@ import {
 interface AssetFileLocal extends Omit<AssetFile, 'uploadDate' | 'url'> {
   uploadDate: Date;
   url?: string;
+  size: number; // Enforce size as number for local usage
+  type: string; // Enforce type as string
 }
 
 // Placeholder content component for when data is loaded
@@ -46,15 +47,13 @@ function AssetPageContent({
   getRootProps,
   getInputProps,
   isDragActive,
-  fileRejections,
   deleteFile,
   downloadFile,
   handlePreviewFile,
   stats,
   formatFileSize,
   truncateFileName,
-  getFileIcon,
-  getFileCategory
+  getFileIcon
 }: {
   files: AssetFileLocal[];
   uploadProgress: number;
@@ -64,7 +63,6 @@ function AssetPageContent({
   getRootProps: any;
   getInputProps: any;
   isDragActive: boolean;
-  fileRejections: any[];
   deleteFile: (id: string) => void;
   downloadFile: (file: AssetFileLocal) => void;
   handlePreviewFile: (file: AssetFileLocal) => void;
@@ -72,7 +70,6 @@ function AssetPageContent({
   formatFileSize: (bytes: number) => string;
   truncateFileName: (fileName: string) => string;
   getFileIcon: (category: AssetFileLocal['category']) => React.ComponentType<any>;
-  getFileCategory: (file: File) => AssetFileLocal['category'];
 }) {
   const navigate = useNavigate();
 
@@ -161,11 +158,10 @@ function AssetPageContent({
             <CardContent>
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-                  isDragActive
-                    ? 'border-primary bg-primary/5'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${isDragActive
+                  ? 'border-primary bg-primary/5'
+                  : 'border-gray-300 hover:border-gray-400'
+                  }`}
               >
                 <input {...getInputProps()} />
                 <div className="flex flex-col items-center space-y-4">
@@ -246,13 +242,13 @@ function AssetPageContent({
                             <p className="text-sm font-medium truncate" title={file.name}>
                               {truncateFileName(file.name)}
                             </p>
-                            <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                            <p className="text-xs text-gray-500">{formatFileSize(file.size || 0)}</p>
                           </div>
                           <Badge variant="secondary" className="ml-2">
                             {file.category}
                           </Badge>
                         </div>
-                        
+
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-400">
                             {file.uploadDate.toLocaleDateString()}
@@ -321,7 +317,7 @@ function AssetPageContent({
         <FilePreviewModal
           file={previewFile}
           isOpen={isPreviewOpen}
-          onClose={() => {}}
+          onClose={() => { }}
           onDownload={() => previewFile && downloadFile(previewFile)}
         />
       </div>
@@ -345,7 +341,7 @@ export function AssetPage() {
     const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf', '.mp4'];
     const fileName = file.name.toLowerCase();
     const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
-    
+
     // Check file extension first
     if (!allowedExtensions.includes(fileExtension)) {
       return {
@@ -353,7 +349,7 @@ export function AssetPage() {
         error: `File type "${fileExtension}" is not allowed. Only PNG, JPG, PDF, and MP4 files are permitted.`
       };
     }
-    
+
     // Check MIME type for additional validation
     if (fileExtension === '.png' && !file.type.startsWith('image/')) {
       return {
@@ -361,36 +357,37 @@ export function AssetPage() {
         error: 'Invalid PNG file. Please ensure the file is a valid image.'
       };
     }
-    
+
     if ((fileExtension === '.jpg' || fileExtension === '.jpeg') && !file.type.startsWith('image/')) {
       return {
         isValid: false,
         error: 'Invalid JPG file. Please ensure the file is a valid image.'
       };
     }
-    
+
     if (fileExtension === '.pdf' && file.type !== 'application/pdf') {
       return {
         isValid: false,
         error: 'Invalid PDF file. Please ensure the file is a valid PDF document.'
       };
     }
-    
+
     if (fileExtension === '.mp4' && !file.type.startsWith('video/')) {
       return {
         isValid: false,
         error: 'Invalid MP4 file. Please ensure the file is a valid video.'
       };
     }
-    
+
     return { isValid: true };
   };
 
   // File type detection
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getFileCategory = (file: File): AssetFileLocal['category'] => {
     const type = file.type.toLowerCase();
     const name = file.name.toLowerCase();
-    
+
     // Only accept JPG, PNG, PDF, MP4 as per requirements
     if (type.startsWith('image/') && (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png'))) {
       return 'image';
@@ -427,27 +424,13 @@ export function AssetPage() {
   const truncateFileName = (fileName: string): string => {
     const maxLength = 20; // Maximum display length
     if (fileName.length <= maxLength) return fileName;
-    
+
     const firstPart = fileName.substring(0, 7);
     const lastPart = fileName.substring(fileName.length - 5);
     return firstPart + '....' + lastPart;
   };
 
-  // Simulate file upload
-  const simulateUpload = (file: File): Promise<void> => {
-    return new Promise((resolve) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 15;
-        setUploadProgress(Math.min(progress, 100));
-        
-        if (progress >= 100) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 200);
-    });
-  };
+
 
   // Handle file drop with validation guard
   const onDrop = useCallback(async (droppedFiles: File[]) => {
@@ -472,7 +455,7 @@ export function AssetPage() {
       const errorMessage = invalidFiles.length === 1
         ? invalidFiles[0]
         : `${invalidFiles.length} files rejected: ${invalidFiles.slice(0, 2).join(', ')}${invalidFiles.length > 2 ? '...' : ''}`;
-      
+
       toast({
         title: "Invalid File(s)",
         description: errorMessage,
@@ -496,9 +479,12 @@ export function AssetPage() {
     }
 
     try {
+      const totalFiles = validFiles.length;
+      let completedFiles = 0;
+
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
-        
+
         // Validate each file before processing (double-check)
         const validation = validateFile(file);
         if (!validation.isValid) {
@@ -509,41 +495,56 @@ export function AssetPage() {
           });
           continue;
         }
-        
-        // Simulate upload progress
-        await simulateUpload(file);
-        
-        // Create asset file object
-        const assetFile: AssetFileLocal = {
-          id: Date.now().toString() + i,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          uploadDate: new Date(),
-          category: getFileCategory(file),
-          url: URL.createObjectURL(file) // For demo purposes
-        };
 
-        setFiles(prev => [...prev, assetFile]);
+        // Update progress indicator
+        setUploadProgress(((completedFiles / totalFiles) * 100) + 10);
+
+        try {
+          const category = getFileCategory(file);
+          const uploadedAsset = await assetService.uploadAsset(file, category);
+
+          const localAsset: AssetFileLocal = {
+            ...uploadedAsset,
+            uploadDate: new Date(uploadedAsset.created_at),
+            url: uploadedAsset.file_url,
+            size: uploadedAsset.file_size, // Map file_size to size
+            type: uploadedAsset.file_type // Map file_type to type
+          };
+
+          setFiles(prev => [localAsset, ...prev]);
+          completedFiles++;
+          setUploadProgress((completedFiles / totalFiles) * 100);
+        } catch (err) {
+          console.error(`Failed to upload ${file.name}:`, err);
+          toast({
+            title: "Upload Failed",
+            description: `Failed to upload ${file.name}. Please try again.`,
+            variant: "destructive",
+          });
+        }
       }
 
-      toast({
-        title: "Upload Successful",
-        description: `${validFiles.length} file(s) uploaded successfully.`,
-      });
+      if (completedFiles > 0) {
+        toast({
+          title: "Upload Successful",
+          description: `${completedFiles} file(s) uploaded successfully.`,
+        });
+      }
     } catch (error) {
+      console.error('Upload process error:', error);
       toast({
-        title: "Upload Failed",
-        description: "Failed to upload files. Please try again.",
+        title: "Upload Error",
+        description: "An unexpected error occurred during upload.",
         variant: "destructive",
       });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
     }
-  }, [toast]);
+  }, [toast, assetService]);
 
   // Dropzone configuration with strict validation
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
     accept: {
@@ -582,13 +583,15 @@ export function AssetPage() {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const data = await assetService.getAssets();
       // Convert the data to match our local interface
       const localFiles: AssetFileLocal[] = data.map(asset => ({
         ...asset,
         uploadDate: new Date(asset.created_at),
-        url: asset.file_url
+        url: asset.file_url,
+        size: asset.file_size, // Map file_size to size
+        type: asset.file_type // Map file_type to type
       }));
       setFiles(localFiles);
     } catch (err) {
@@ -607,19 +610,31 @@ export function AssetPage() {
   }, [isInitialized, assetService]);
 
   // Delete file
-  const deleteFile = (id: string) => {
-    setFiles(prev => {
-      const fileToDelete = prev.find(f => f.id === id);
-      if (fileToDelete?.url) {
-        URL.revokeObjectURL(fileToDelete.url);
+  const deleteFile = async (id: string) => {
+    try {
+      // Optimistic update
+      // const fileToDelete = files.find(f => f.id === id);
+      setFiles(prev => prev.filter(f => f.id !== id));
+
+      await assetService.deleteAsset(id);
+
+      toast({
+        title: "File Deleted",
+        description: "File has been deleted successfully.",
+      });
+    } catch (error) {
+      console.error('Delete failed:', error);
+      // Revert on failure
+      if (files.find(f => f.id === id)) {
+        loadData(); // Reload to ensure sync
       }
-      return prev.filter(f => f.id !== id);
-    });
-    
-    toast({
-      title: "File Deleted",
-      description: "File has been deleted successfully.",
-    });
+
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete file. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Download file
@@ -643,7 +658,7 @@ export function AssetPage() {
   // Calculate statistics
   const stats = {
     totalFiles: files.length,
-    totalSize: files.reduce((sum, file) => sum + file.size, 0),
+    totalSize: files.reduce((sum, file) => sum + (file.size || 0), 0),
     images: files.filter(f => f.category === 'image').length,
     videos: files.filter(f => f.category === 'video').length,
     documents: files.filter(f => f.category === 'document').length
@@ -667,7 +682,6 @@ export function AssetPage() {
       getRootProps={getRootProps}
       getInputProps={getInputProps}
       isDragActive={isDragActive}
-      fileRejections={fileRejections}
       deleteFile={deleteFile}
       downloadFile={downloadFile}
       handlePreviewFile={handlePreviewFile}
@@ -675,7 +689,6 @@ export function AssetPage() {
       formatFileSize={formatFileSize}
       truncateFileName={truncateFileName}
       getFileIcon={getFileIcon}
-      getFileCategory={getFileCategory}
     />
   );
 }
