@@ -1,7 +1,6 @@
 import { db, SyncOperation } from '../db';
 import { supabase } from '../supabase';
 import {
-  toISOString,
   fromISOString,
   isValidTimestamp,
   compareTimestamps,
@@ -133,7 +132,6 @@ export class SyncManager {
   private currentSyncInterval: number;
   private retryDelays: Map<string, number> = new Map(); // operationId -> delay
   private syncCache: Map<string, any> = new Map(); // Cache for frequently accessed data
-  private backgroundSyncQueue: PrioritySyncOperation[] = [];
   private compressionCache: Map<string, string> = new Map(); // Compressed data cache
 
   constructor(config?: Partial<SyncConfig>) {
@@ -150,7 +148,7 @@ export class SyncManager {
       maxBackoffDelay: 300000, // 5 minutes
       activityDetectionEnabled: true,
       backgroundSyncEnabled: true,
-      compressionEnabled: true,
+      compressionEnabled: false,
       ...config
     };
 
@@ -325,6 +323,8 @@ export class SyncManager {
       const startTime = Date.now();
       // Simple connection test - check if we can reach Supabase
       const { error } = await supabase.from('profiles').select('count').limit(1).single();
+      if (error) throw error;
+
       const latency = Date.now() - startTime;
 
       this.connectionState.lastCheck = new Date();
@@ -341,6 +341,7 @@ export class SyncManager {
 
       this.syncMetrics.connectionQuality = this.connectionState.quality;
     } catch (error) {
+      console.error('Connection check failed:', error);
       this.connectionState.consecutiveFailures++;
       if (this.connectionState.consecutiveFailures > 3) {
         this.connectionState.quality = 'poor';
@@ -418,8 +419,9 @@ export class SyncManager {
 
       // Clean up sync cache (remove items older than 1 hour)
       const cacheCutoff = Date.now() - 60 * 60 * 1000;
-      for (const [key, value] of this.syncCache.entries()) {
-        if (value.timestamp && value.timestamp < cacheCutoff) {
+      for (const key of this.syncCache.keys()) {
+        const value = this.syncCache.get(key);
+        if (value && value.timestamp && value.timestamp < cacheCutoff) {
           this.syncCache.delete(key);
         }
       }
@@ -548,7 +550,7 @@ export class SyncManager {
 
     } catch (error) {
       const syncDuration = Date.now() - syncStartTime;
-      console.error('Sync error:', error);
+      console.error(`Sync error (duration: ${syncDuration}ms):`, error);
       this.syncMetrics.failedOperations++;
 
       // Determine if this is a recoverable error
@@ -754,20 +756,6 @@ export class SyncManager {
   }
 
   /**
-   * Legacy process batch method for backward compatibility
-   */
-  private async processBatch(operations: SyncOperation[]): Promise<void> {
-    const priorityOps: PrioritySyncOperation[] = operations.map(op => ({
-      ...op,
-      priority: this.determineOperationPriority(op),
-      estimatedSize: this.estimateOperationSize(op),
-      dependencies: []
-    }));
-
-    await this.processBatchWithRetry(priorityOps);
-  }
-
-  /**
    * Process a single sync operation
    */
   private async processOperation(operation: SyncOperation): Promise<void> {
@@ -800,7 +788,7 @@ export class SyncManager {
   /**
    * Push create operation to server
    */
-  private async pushCreate(table: string, recordId: string, data: any): Promise<void> {
+  private async pushCreate(table: string, _recordId: string, data: any): Promise<void> {
     const supabaseTable = this.mapTableName(table);
 
     // Remove sync metadata before sending to server
@@ -884,13 +872,6 @@ export class SyncManager {
       console.error('Error in pullFromServerWithCache:', error);
       // Continue without caching on error
     }
-  }
-
-  /**
-   * Legacy pull from server method for backward compatibility
-   */
-  private async pullFromServer(): Promise<void> {
-    await this.pullFromServerWithCache();
   }
 
   /**
@@ -1287,23 +1268,6 @@ export class SyncManager {
   }
 
   /**
-   * Decompress data received from sync
-   */
-  private decompressData(data: any): any {
-    if (data._compressed && data._compressionKey) {
-      const compressed = this.compressionCache.get(data._compressionKey);
-      if (compressed) {
-        try {
-          return JSON.parse(atob(compressed));
-        } catch (error) {
-          console.error('Decompression failed:', error);
-        }
-      }
-    }
-    return data;
-  }
-
-  /**
    * Get current sync status
    */
   getStatus(): SyncStatus {
@@ -1330,7 +1294,7 @@ export class SyncManager {
       connectionQuality: this.connectionState.quality,
       unsyncedCounts,
       pendingOperations: pendingOps.length,
-      totalPending: pendingOps.reduce((sum, op) => sum + 1, 0),
+      totalPending: pendingOps.reduce((sum, _) => sum + 1, 0),
       metrics: {
         ...this.syncMetrics,
         cacheSize: this.syncCache.size,
@@ -1353,7 +1317,7 @@ export class SyncManager {
   /**
    * Get detailed sync logs for debugging
    */
-  getSyncLogs(limit: number = 50): SyncEvent[] {
+  getSyncLogs(_limit: number = 50): SyncEvent[] {
     // In a real implementation, this would store logs in a circular buffer
     // For now, return empty array as logs are handled via events
     return [];
