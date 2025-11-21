@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
@@ -40,6 +41,20 @@ export function TemplatesPage() {
   const [formData, setFormData] = useState({
     name: '',
     variants: ['', '', ''] // Initialize with 3 empty variants
+  });
+
+  // Alert Dialog states
+  const [alertDialog, setAlertDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    type: 'error' | 'confirm';
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    type: 'error'
   });
 
   // Original loadTemplates logic
@@ -92,7 +107,12 @@ export function TemplatesPage() {
 
       // Validate minimum 3 variants
       if (validVariants.length < 3) {
-        alert('Template must have at least 3 non-empty variants');
+        setAlertDialog({
+          isOpen: true,
+          title: 'Validation Error',
+          description: 'Template must have at least 3 non-empty variants',
+          type: 'error'
+        });
         return;
       }
 
@@ -114,7 +134,12 @@ export function TemplatesPage() {
     } catch (err) {
       console.error('Failed to create template:', err);
       const appError = handleServiceError(err, 'createTemplate');
-      alert(appError.message);
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error',
+        description: appError.message,
+        type: 'error'
+      });
     }
   };
 
@@ -127,7 +152,12 @@ export function TemplatesPage() {
 
       // Validate minimum 3 variants
       if (validVariants.length < 3) {
-        alert('Template must have at least 3 non-empty variants');
+        setAlertDialog({
+          isOpen: true,
+          title: 'Validation Error',
+          description: 'Template must have at least 3 non-empty variants',
+          type: 'error'
+        });
         return;
       }
 
@@ -148,21 +178,37 @@ export function TemplatesPage() {
     } catch (err) {
       console.error('Failed to update template:', err);
       const appError = handleServiceError(err, 'updateTemplate');
-      alert(appError.message);
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error',
+        description: appError.message,
+        type: 'error'
+      });
     }
   };
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
-
-    try {
-      await templateService.deleteTemplate(templateId);
-      setTemplates(templates.filter(t => t.id !== templateId));
-    } catch (err) {
-      console.error('Failed to delete template:', err);
-      const appError = handleServiceError(err, 'deleteTemplate');
-      alert(appError.message);
-    }
+  const handleDeleteTemplate = (templateId: string) => {
+    setAlertDialog({
+      isOpen: true,
+      title: 'Delete Template',
+      description: 'Are you sure you want to delete this template? This action cannot be undone.',
+      type: 'confirm',
+      onConfirm: async () => {
+        try {
+          await templateService.deleteTemplate(templateId);
+          setTemplates(templates.filter(t => t.id !== templateId));
+        } catch (err) {
+          console.error('Failed to delete template:', err);
+          const appError = handleServiceError(err, 'deleteTemplate');
+          setAlertDialog({
+            isOpen: true,
+            title: 'Error',
+            description: appError.message,
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
   const openEditDialog = (template: Template) => {
@@ -402,6 +448,36 @@ export function TemplatesPage() {
               </div>
             </DialogContent>
           </Dialog>
+
+          {/* Alert Dialog */}
+          <AlertDialog open={alertDialog.isOpen} onOpenChange={(isOpen) => setAlertDialog({ ...alertDialog, isOpen })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{alertDialog.title}</AlertDialogTitle>
+                <AlertDialogDescription>{alertDialog.description}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                {alertDialog.type === 'confirm' ? (
+                  <>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        alertDialog.onConfirm?.();
+                        setAlertDialog({ ...alertDialog, isOpen: false });
+                      }}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </>
+                ) : (
+                  <AlertDialogAction onClick={() => setAlertDialog({ ...alertDialog, isOpen: false })}>
+                    OK
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </FadeIn>
       </div>
     </div>

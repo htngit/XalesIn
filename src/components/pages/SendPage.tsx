@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
+import { userContextManager } from '@/lib/security/UserContextManager';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { Label } from '@/components/ui/label';
@@ -268,24 +269,21 @@ function SendPageContent({
                           {assets.map((asset) => {
                             const IconComponent = getAssetIcon(asset.category);
                             const isSelected = selectedAssets.includes(asset.id);
-                            
+
                             return (
                               <div
                                 key={asset.id}
-                                className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${
-                                  isSelected
+                                className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${isSelected
                                     ? 'border-primary bg-primary/5 ring-1 ring-primary'
                                     : 'border-gray-200 hover:border-gray-300'
-                                }`}
+                                  }`}
                                 onClick={() => toggleAssetSelection(asset.id)}
                               >
                                 <div className="flex items-center space-x-3">
-                                  <div className={`p-2 rounded ${
-                                    isSelected ? 'bg-primary/10' : 'bg-gray-100'
-                                  }`}>
-                                    <IconComponent className={`h-4 w-4 ${
-                                      isSelected ? 'text-primary' : 'text-gray-600'
-                                    }`} />
+                                  <div className={`p-2 rounded ${isSelected ? 'bg-primary/10' : 'bg-gray-100'
+                                    }`}>
+                                    <IconComponent className={`h-4 w-4 ${isSelected ? 'text-primary' : 'text-gray-600'
+                                      }`} />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium truncate" title={asset.name}>
@@ -399,39 +397,39 @@ function SendPageContent({
             {/* Side Panel */}
             <div className="space-y-6">
               {/* Quota Status */}
-                <AnimatedCard animation="fadeIn" delay={0.4} className="min-h-[250px]">
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Zap className="h-5 w-5" />
-                      <span>Quota Status</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {quota ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-sm">Remaining:</span>
-                          <Badge variant={quota.remaining >= targetContacts.length ? 'default' : 'destructive'}>
-                            {quota.remaining}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">Required:</span>
-                          <Badge variant="secondary">{targetContacts.length}</Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">Plan:</span>
-                          <Badge variant="outline">{quota.plan_type}</Badge>
-                        </div>
+              <AnimatedCard animation="fadeIn" delay={0.4} className="min-h-[250px]">
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Zap className="h-5 w-5" />
+                    <span>Quota Status</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {quota ? (
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm">Remaining:</span>
+                        <Badge variant={quota.remaining >= targetContacts.length ? 'default' : 'destructive'}>
+                          {quota.remaining}
+                        </Badge>
                       </div>
-                    ) : (
-                      <div className="text-center text-sm text-muted-foreground">
-                        Loading quota...
+                      <div className="flex justify-between">
+                        <span className="text-sm">Required:</span>
+                        <Badge variant="secondary">{targetContacts.length}</Badge>
                       </div>
-                    )}
-                  </CardContent>
-                </AnimatedCard>
-            
+                      <div className="flex justify-between">
+                        <span className="text-sm">Plan:</span>
+                        <Badge variant="outline">{quota.plan_type}</Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-sm text-muted-foreground">
+                      Loading quota...
+                    </div>
+                  )}
+                </CardContent>
+              </AnimatedCard>
+
 
               {/* Send Button */}
               <AnimatedCard animation="fadeIn" delay={0.5}>
@@ -461,9 +459,9 @@ function SendPageContent({
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription>
                         {!selectedTemplate ? 'Please select a template' :
-                         targetContacts.length === 0 ? 'No contacts in selected group' :
-                         quota && quota.remaining < targetContacts.length ? 'Insufficient quota' :
-                         'Complete all required fields'}
+                          targetContacts.length === 0 ? 'No contacts in selected group' :
+                            quota && quota.remaining < targetContacts.length ? 'Insufficient quota' :
+                              'Complete all required fields'}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -550,11 +548,17 @@ export function SendPage({ userName }: SendPageProps) {
     try {
       setIsLoading(true);
       setError(null);
-      
+
+      // Get current user ID
+      const currentUserId = await userContextManager.getCurrentMasterUserId();
+      if (!currentUserId) {
+        throw new Error('User not authenticated');
+      }
+
       const [contactsData, templatesData, quotaData, groupsData, assetsData] = await Promise.all([
         contactService.getContacts(),
         templateService.getTemplates(),
-        quotaService.getQuota('user_123'), // Mock user ID
+        quotaService.getQuota(currentUserId),
         groupService.getGroups(),
         assetService.getAssets()
       ]);
@@ -633,8 +637,14 @@ export function SendPage({ userName }: SendPageProps) {
     setSendResult(null);
 
     try {
+      // Get current user ID
+      const currentUserId = await userContextManager.getCurrentMasterUserId();
+      if (!currentUserId) {
+        throw new Error('User not authenticated');
+      }
+
       // Step 1: Reserve quota
-      const reserveResult = await quotaService.reserveQuota('user_123', targetContacts.length);
+      const reserveResult = await quotaService.reserveQuota(currentUserId, targetContacts.length);
 
       if (!reserveResult.success) {
         throw new Error('Failed to reserve quota');
@@ -691,14 +701,14 @@ export function SendPage({ userName }: SendPageProps) {
     // Replace variables with example values
     template.variables?.forEach(variable => {
       const exampleValue = variable.includes('name') ? 'John Doe' :
-                         variable.includes('amount') ? '$100' :
-                         variable.includes('date') ? 'December 25, 2024' :
-                         variable.includes('event') ? 'Product Launch' :
-                         variable.includes('location') ? 'Jakarta Convention Center' :
-                         variable.includes('product') ? 'Amazing Product' :
-                         variable.includes('company') ? 'Your Company' :
-                         variable.includes('contact') ? '+62812345678' :
-                         `[${variable}]`;
+        variable.includes('amount') ? '$100' :
+          variable.includes('date') ? 'December 25, 2024' :
+            variable.includes('event') ? 'Product Launch' :
+              variable.includes('location') ? 'Jakarta Convention Center' :
+                variable.includes('product') ? 'Amazing Product' :
+                  variable.includes('company') ? 'Your Company' :
+                    variable.includes('contact') ? '+62812345678' :
+                      `[${variable}]`;
 
       preview = preview.replace(new RegExp(`\\{${variable}\\}`, 'g'), exampleValue);
     });

@@ -5,6 +5,7 @@ import { ContactService } from './ContactService';
 import { GroupService } from './GroupService';
 import { AssetService } from './AssetService';
 import { HistoryService } from './HistoryService';
+import { QuotaService } from './QuotaService';
 
 interface ServiceContextType {
   templateService: TemplateService;
@@ -12,6 +13,7 @@ interface ServiceContextType {
   groupService: GroupService;
   assetService: AssetService;
   historyService: HistoryService;
+  quotaService: QuotaService;
   isInitialized: boolean;
 }
 
@@ -65,6 +67,7 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
     groupService: serviceManager.getGroupService(),
     assetService: serviceManager.getAssetService(),
     historyService: serviceManager.getHistoryService(),
+    quotaService: serviceManager.getQuotaService(),
     isInitialized: true,
   };
 

@@ -804,7 +804,7 @@ export class SyncManager {
     const supabaseTable = this.mapTableName(table);
 
     // Remove sync metadata before sending to server
-    const { _syncStatus, _lastModified, _version, _deleted, _compressed, assets, ...serverData } = data;
+    const { _syncStatus, _lastModified, _version, _deleted, _compressed, _compressionKey, assets, ...serverData } = data;
 
     const { error } = await supabase
       .from(supabaseTable)
@@ -820,7 +820,7 @@ export class SyncManager {
     const supabaseTable = this.mapTableName(table);
 
     // Remove sync metadata before sending to server
-    const { _syncStatus, _lastModified, _version, _deleted, _compressed, assets, ...serverData } = data;
+    const { _syncStatus, _lastModified, _version, _deleted, _compressed, _compressionKey, assets, ...serverData } = data;
     serverData.updated_at = nowISO();
 
     const { error } = await supabase

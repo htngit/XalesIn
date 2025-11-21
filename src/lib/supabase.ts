@@ -125,7 +125,7 @@ export const rpcHelpers = {
     try {
       const { data, error } = await supabase.rpc('reserve_quota', {
         p_user_id: userId,
-        p_messages_count: messageCount
+        p_amount: messageCount
       });
 
       if (error) throw error;
@@ -176,7 +176,7 @@ export const rpcHelpers = {
   async getUserQuota(userId: string): Promise<Quota[]> {
     try {
       console.log('Getting user quota for:', userId);
-      
+
       const { data, error } = await supabase
         .from('user_quotas')
         .select('*')
@@ -199,7 +199,7 @@ export const rpcHelpers = {
       }
 
       console.log('Found quota data:', data.length, 'records');
-      
+
       return data.map(quota => ({
         id: quota.id,
         user_id: quota.user_id,

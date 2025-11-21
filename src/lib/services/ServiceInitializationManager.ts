@@ -3,6 +3,7 @@ import { ContactService } from './ContactService';
 import { GroupService } from './GroupService';
 import { HistoryService } from './HistoryService';
 import { TemplateService } from './TemplateService';
+import { QuotaService } from './QuotaService';
 
 /**
  * A singleton manager responsible for initializing, storing, and providing
@@ -21,6 +22,7 @@ export class ServiceInitializationManager {
   private groupService: GroupService | null = null;
   private assetService: AssetService | null = null;
   private historyService: HistoryService | null = null;
+  private quotaService: QuotaService | null = null;
 
   // Async lock to prevent concurrent initialization
   private isInitializing: boolean = false;
@@ -41,7 +43,7 @@ export class ServiceInitializationManager {
    * Check if services have been fully initialized
    */
   public isInitialized(): boolean {
-    return this.initializedServices.size === 5 && !this.isInitializing;
+    return this.initializedServices.size === 6 && !this.isInitializing;
   }
 
   private _isDashboardInitialized: boolean = false;
@@ -86,6 +88,7 @@ export class ServiceInitializationManager {
         await this.initializeService('group', () => this.initializeGroupService(masterUserId));
         await this.initializeService('asset', () => this.initializeAssetService(masterUserId));
         await this.initializeService('history', () => this.initializeHistoryService(masterUserId));
+        await this.initializeService('quota', () => this.initializeQuotaService(masterUserId));
 
         console.log('All services initialized successfully');
       } catch (error) {
@@ -136,6 +139,13 @@ export class ServiceInitializationManager {
     return this.historyService;
   }
 
+  public getQuotaService(): QuotaService {
+    if (!this.quotaService) {
+      throw new Error('QuotaService not initialized. Call initializeAllServices first.');
+    }
+    return this.quotaService;
+  }
+
   // --- Private Initializers ---
 
   private async initializeService(name: string, initFn: () => Promise<void>): Promise<void> {
@@ -174,6 +184,11 @@ export class ServiceInitializationManager {
   private async initializeHistoryService(masterUserId: string): Promise<void> {
     this.historyService = new HistoryService();
     await this.historyService.initialize(masterUserId);
+  }
+
+  private async initializeQuotaService(_masterUserId: string): Promise<void> {
+    this.quotaService = new QuotaService();
+    // QuotaService doesn't have an initialize method, it's ready to use
   }
 }
 
