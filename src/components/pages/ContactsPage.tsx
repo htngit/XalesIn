@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
@@ -96,6 +97,7 @@ function ContactsPageContent({
   onUploadClick: () => void;
 }) {
   const navigate = useNavigate();
+  const intl = useIntl();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -106,11 +108,11 @@ function ContactsPageContent({
             <div className="flex items-center space-x-4">
               <Button variant="ghost" onClick={() => navigate('/dashboard')}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                {intl.formatMessage({ id: 'common.button.back', defaultMessage: 'Back' })}
               </Button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Contacts</h1>
-                <p className="text-gray-600">Manage your WhatsApp contacts organized by groups</p>
+                <h1 className="text-3xl font-bold text-gray-900">{intl.formatMessage({ id: 'contacts.title', defaultMessage: 'Contacts' })}</h1>
+                <p className="text-gray-600">{intl.formatMessage({ id: 'contacts.subtitle', defaultMessage: 'Manage your WhatsApp contacts organized by groups' })}</p>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -120,15 +122,15 @@ function ContactsPageContent({
                 onClick={() => navigate('/groups')}
               >
                 <Settings className="h-4 w-4 mr-2" />
-                Manage Groups
+                {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
               </AnimatedButton>
               <AnimatedButton animation="scale" onClick={onUploadClick}>
                 <Upload className="h-4 w-4 mr-2" />
-                Upload Contacts
+                {intl.formatMessage({ id: 'contacts.button.upload', defaultMessage: 'Upload Contacts' })}
               </AnimatedButton>
               <AnimatedButton animation="scale" onClick={handleAddContact}>
                 <UserPlus className="h-4 w-4 mr-2" />
-                Add Contact
+                {intl.formatMessage({ id: 'contacts.button.add', defaultMessage: 'Add Contact' })}
               </AnimatedButton>
             </div>
           </div>
@@ -137,7 +139,7 @@ function ContactsPageContent({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <AnimatedCard animation="slideUp" delay={0.1}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Contacts</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'contacts.stats.total', defaultMessage: 'Total Contacts' })}</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -146,13 +148,13 @@ function ContactsPageContent({
                 ) : (
                   <div className="text-2xl font-bold">{stats.total}</div>
                 )}
-                <p className="text-xs text-muted-foreground">All contacts</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'contacts.stats.total.desc', defaultMessage: 'All contacts' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.2}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Groups</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'contacts.stats.groups', defaultMessage: 'Groups' })}</CardTitle>
                 <Hash className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -161,13 +163,13 @@ function ContactsPageContent({
                 ) : (
                   <div className="text-2xl font-bold">{stats.groups.length}</div>
                 )}
-                <p className="text-xs text-muted-foreground">Contact groups</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'contacts.stats.groups.desc', defaultMessage: 'Contact groups' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.3}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Group Size</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'contacts.stats.avg_size', defaultMessage: 'Avg Group Size' })}</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -176,17 +178,17 @@ function ContactsPageContent({
                 ) : (
                   <div className="text-2xl font-bold">{stats.averageGroupSize}</div>
                 )}
-                <p className="text-xs text-muted-foreground">Contacts per group</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'contacts.stats.avg_size.desc', defaultMessage: 'Contacts per group' })}</p>
               </CardContent>
             </AnimatedCard>
           </div>
 
-          {/* Search Only - NO GROUP FILTER BUTTONS AS REQUESTED */}
+          {/* Search Only */}
           <AnimatedCard animation="fadeIn" delay={0.4}>
             <CardHeader>
-              <CardTitle>Search Contacts</CardTitle>
+              <CardTitle>{intl.formatMessage({ id: 'contacts.search.title', defaultMessage: 'Search Contacts' })}</CardTitle>
               <CardDescription>
-                Search contacts by name, phone, or tags. Group filtering handled via database logic.
+                {intl.formatMessage({ id: 'contacts.search.desc', defaultMessage: 'Search contacts by name, phone, or tags. Group filtering handled via database logic.' })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -195,7 +197,7 @@ function ContactsPageContent({
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search contacts by name, phone, or tags..."
+                      placeholder={intl.formatMessage({ id: 'contacts.search.placeholder', defaultMessage: 'Search contacts by name, phone, or tags...' })}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -211,11 +213,11 @@ function ContactsPageContent({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Contacts List ({filteredContacts.length})</CardTitle>
+                  <CardTitle>{intl.formatMessage({ id: 'contacts.list.title', defaultMessage: 'Contacts List' })} ({filteredContacts.length})</CardTitle>
                   <CardDescription>
                     {searchQuery
-                      ? `All contacts matching "${searchQuery}"`
-                      : 'All contacts across all groups'
+                      ? intl.formatMessage({ id: 'contacts.list.desc.search', defaultMessage: 'All contacts matching "{query}"' }, { query: searchQuery })
+                      : intl.formatMessage({ id: 'contacts.list.desc.all', defaultMessage: 'All contacts across all groups' })
                     }
                   </CardDescription>
                 </div>
@@ -227,7 +229,7 @@ function ContactsPageContent({
                     disabled={isBulkDeleting}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Delete ({selectedContactIds.size})
+                    {intl.formatMessage({ id: 'contacts.button.delete_selected', defaultMessage: 'Delete ({count})' }, { count: selectedContactIds.size })}
                   </Button>
                 )}
               </div>
@@ -236,8 +238,8 @@ function ContactsPageContent({
               {filteredContacts.length === 0 && !isLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   {searchQuery
-                    ? 'No contacts found matching your search.'
-                    : 'No contacts found. Add some contacts to get started.'
+                    ? intl.formatMessage({ id: 'contacts.empty.search', defaultMessage: 'No contacts found matching your search.' })
+                    : intl.formatMessage({ id: 'contacts.empty.all', defaultMessage: 'No contacts found. Add some contacts to get started.' })
                   }
                 </div>
               ) : (
@@ -248,16 +250,16 @@ function ContactsPageContent({
                         <Checkbox
                           checked={selectedContactIds.size === filteredContacts.length && filteredContacts.length > 0}
                           onCheckedChange={handleSelectAll}
-                          aria-label="Select all contacts"
+                          aria-label={intl.formatMessage({ id: 'contacts.list.aria.select_all', defaultMessage: 'Select all contacts' })}
                           disabled={isLoading}
                         />
                       </TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Group</TableHead>
-                      <TableHead>Tags</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
+                      <TableHead>{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -278,8 +280,8 @@ function ContactsPageContent({
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           {searchQuery
-                            ? 'No contacts found matching your search.'
-                            : 'No contacts found. Add some contacts to get started.'
+                            ? intl.formatMessage({ id: 'contacts.empty.search', defaultMessage: 'No contacts found matching your search.' })
+                            : intl.formatMessage({ id: 'contacts.empty.all', defaultMessage: 'No contacts found. Add some contacts to get started.' })
                           }
                         </TableCell>
                       </TableRow>
@@ -313,7 +315,7 @@ function ContactsPageContent({
                                   {group.name}
                                 </Badge>
                               ) : (
-                                <Badge variant="secondary">Unknown Group</Badge>
+                                <Badge variant="secondary">{intl.formatMessage({ id: 'contacts.badge.unknown_group', defaultMessage: 'Unknown Group' })}</Badge>
                               )}
                             </TableCell>
                             <TableCell>
@@ -326,7 +328,7 @@ function ContactsPageContent({
                                     </Badge>
                                   ))
                                 ) : (
-                                  <span className="text-muted-foreground text-sm">No tags</span>
+                                  <span className="text-muted-foreground text-sm">{intl.formatMessage({ id: 'contacts.badge.no_tags', defaultMessage: 'No tags' })}</span>
                                 )}
                               </div>
                             </TableCell>
@@ -345,14 +347,14 @@ function ContactsPageContent({
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleEditContact(contact.id)}>
                                     <Edit className="h-4 w-4 mr-2" />
-                                    Edit
+                                    {intl.formatMessage({ id: 'contacts.action.edit', defaultMessage: 'Edit' })}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => handleDeleteContact(contact.id)}
                                     className="text-red-600"
                                   >
                                     <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
+                                    {intl.formatMessage({ id: 'contacts.action.delete', defaultMessage: 'Delete' })}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -372,22 +374,22 @@ function ContactsPageContent({
         <AlertDialog open={showBulkDeleteDialog} onOpenChange={cancelBulkDelete}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle>
+              <AlertDialogTitle>{intl.formatMessage({ id: 'contacts.dialog.bulk_delete.title', defaultMessage: 'Confirm Bulk Delete' })}</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete {selectedContactIds.size} contact{selectedContactIds.size > 1 ? 's' : ''}?
-                This action cannot be undone.
+                {intl.formatMessage({ id: 'contacts.dialog.bulk_delete.desc', defaultMessage: 'Are you sure you want to delete {count} contact{s}?' }, { count: selectedContactIds.size, s: selectedContactIds.size > 1 ? 's' : '' })}
+                {' '}{intl.formatMessage({ id: 'contacts.dialog.delete.desc', defaultMessage: 'This action cannot be undone.' })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={cancelBulkDelete} disabled={isBulkDeleting}>
-                Cancel
+                {intl.formatMessage({ id: 'common.button.cancel', defaultMessage: 'Cancel' })}
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmBulkDelete}
                 className="bg-red-600 hover:bg-red-700"
                 disabled={isBulkDeleting}
               >
-                {isBulkDeleting ? 'Deleting...' : 'Delete All'}
+                {isBulkDeleting ? intl.formatMessage({ id: 'contacts.button.deleting', defaultMessage: 'Deleting...' }) : intl.formatMessage({ id: 'contacts.button.delete_all', defaultMessage: 'Delete All' })}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -399,6 +401,7 @@ function ContactsPageContent({
 
 export function ContactsPage() {
   const { contactService, groupService, isInitialized } = useServices();
+  const intl = useIntl();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
@@ -435,7 +438,7 @@ export function ContactsPage() {
       }
     } catch (error) {
       console.error('Error fetching contact for edit:', error);
-      setNotification({ message: 'Error loading contact for editing', type: 'error' });
+      setNotification({ message: intl.formatMessage({ id: 'contacts.notification.load_error', defaultMessage: 'Error loading contact for editing' }), type: 'error' });
     }
   };
 
@@ -466,14 +469,14 @@ export function ContactsPage() {
         if (success) {
           // Refresh the contacts list
           await loadData();
-          setNotification({ message: `${contact.name} has been deleted successfully.`, type: 'success' });
+          setNotification({ message: intl.formatMessage({ id: 'contacts.notification.delete_success', defaultMessage: '{name} has been deleted successfully.' }, { name: contact.name }), type: 'success' });
         } else {
-          setNotification({ message: 'Failed to delete contact. Please try again.', type: 'error' });
+          setNotification({ message: intl.formatMessage({ id: 'contacts.notification.delete_failed', defaultMessage: 'Failed to delete contact. Please try again.' }), type: 'error' });
         }
       }
     } catch (error) {
       console.error('Error deleting contact:', error);
-      setNotification({ message: 'An error occurred while deleting the contact.', type: 'error' });
+      setNotification({ message: intl.formatMessage({ id: 'contacts.notification.delete_error', defaultMessage: 'An error occurred while deleting the contact.' }), type: 'error' });
     } finally {
       setShowDeleteDialog(false);
       setDeleteContactId(null);
@@ -523,21 +526,21 @@ export function ContactsPage() {
         await loadData();
         setSelectedContactIds(new Set());
         toast({
-          title: "Success",
-          description: `${result.deletedCount} contact${result.deletedCount > 1 ? 's' : ''} deleted successfully.`,
+          title: intl.formatMessage({ id: 'common.status.success', defaultMessage: 'Success' }),
+          description: intl.formatMessage({ id: 'contacts.notification.bulk_delete_success', defaultMessage: '{count} contact{s} deleted successfully.' }, { count: result.deletedCount, s: result.deletedCount > 1 ? 's' : '' }),
         });
       } else {
         toast({
-          title: "Error",
-          description: "Failed to delete contacts. Please try again.",
+          title: intl.formatMessage({ id: 'common.status.error', defaultMessage: 'Error' }),
+          description: intl.formatMessage({ id: 'contacts.notification.bulk_delete_failed', defaultMessage: 'Failed to delete contacts. Please try again.' }),
           variant: "destructive",
         });
       }
     } catch (error) {
       console.error('Error deleting contacts:', error);
       toast({
-        title: "Error",
-        description: "An error occurred while deleting contacts.",
+        title: intl.formatMessage({ id: 'common.status.error', defaultMessage: 'Error' }),
+        description: intl.formatMessage({ id: 'contacts.notification.bulk_delete_error', defaultMessage: 'An error occurred while deleting contacts.' }),
         variant: "destructive",
       });
     } finally {
@@ -667,15 +670,15 @@ export function ContactsPage() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+            <AlertDialogTitle>{intl.formatMessage({ id: 'contacts.dialog.delete.title', defaultMessage: 'Confirm Delete' })}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this contact? This action cannot be undone.
+              {intl.formatMessage({ id: 'contacts.dialog.delete.desc', defaultMessage: 'Are you sure you want to delete this contact? This action cannot be undone.' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelDeleteContact}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={cancelDeleteContact}>{intl.formatMessage({ id: 'common.button.cancel', defaultMessage: 'Cancel' })}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteContact} className="bg-red-600 hover:bg-red-700">
-              Delete
+              {intl.formatMessage({ id: 'contacts.action.delete', defaultMessage: 'Delete' })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -687,7 +690,7 @@ export function ContactsPage() {
         onOpenChange={setShowUploadDialog}
         onSuccess={() => {
           loadData();
-          setNotification({ message: 'Contacts uploaded successfully', type: 'success' });
+          setNotification({ message: intl.formatMessage({ id: 'contacts.notification.upload_success', defaultMessage: 'Contacts uploaded successfully' }), type: 'success' });
         }}
       />
 

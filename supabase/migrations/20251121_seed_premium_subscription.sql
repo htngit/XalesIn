@@ -1,20 +1,41 @@
--- Migration: Seed Premium Subscription for User
+-- Migration: Seed Pro Yearly Subscription for User
 -- User ID: ce73a29f-b232-439d-b10f-90c8868513f9
--- Description: Upgrade user to Premium plan with 10,000 messages/month quota
--- Created: 2025-11-21
+-- Description: Upgrade user to Pro Yearly plan with unlimited messages for 1 year
+-- Created: 2025-11-22
 
 BEGIN;
 
--- Update user_quotas to Premium plan
+-- Update user_quotas to Pro Yearly plan
 UPDATE user_quotas
 SET 
-    plan_type = 'premium',
-    messages_limit = 10000,
+    plan_type = 'pro',
+    messages_limit = 999999,  -- Unlimited messages
     messages_used = 0,
-    reset_date = CURRENT_DATE + INTERVAL '30 days',
+    reset_date = CURRENT_DATE + INTERVAL '365 days',  -- 1 year subscription
     is_active = true,
     updated_at = NOW()
 WHERE user_id = 'ce73a29f-b232-439d-b10f-90c8868513f9';
+
+-- Insert or update subscription record (if subscriptions table exists)
+INSERT INTO subscriptions (user_id, plan_type, billing_cycle, start_date, end_date, is_active, created_at, updated_at)
+VALUES (
+    'ce73a29f-b232-439d-b10f-90c8868513f9',
+    'pro',
+    'yearly',
+    CURRENT_DATE,
+    CURRENT_DATE + INTERVAL '365 days',
+    true,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (user_id) 
+DO UPDATE SET
+    plan_type = EXCLUDED.plan_type,
+    billing_cycle = EXCLUDED.billing_cycle,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    is_active = EXCLUDED.is_active,
+    updated_at = NOW();
 
 -- Verify the update
 DO $$
@@ -24,14 +45,15 @@ BEGIN
     SELECT COUNT(*) INTO v_count
     FROM user_quotas
     WHERE user_id = 'ce73a29f-b232-439d-b10f-90c8868513f9'
-    AND plan_type = 'premium'
-    AND messages_limit = 10000;
+    AND plan_type = 'pro'
+    AND messages_limit = 999999
+    AND reset_date >= CURRENT_DATE + INTERVAL '364 days';  -- Allow 1 day tolerance
     
     IF v_count = 0 THEN
-        RAISE EXCEPTION 'Premium subscription upgrade failed for user ce73a29f-b232-439d-b10f-90c8868513f9';
+        RAISE EXCEPTION 'Pro Yearly subscription upgrade failed for user ce73a29f-b232-439d-b10f-90c8868513f9';
     END IF;
     
-    RAISE NOTICE 'Successfully upgraded user to Premium plan (10,000 messages/month)';
+    RAISE NOTICE 'Successfully upgraded user to Pro Yearly plan (Unlimited messages for 1 year)';
 END $$;
 
 COMMIT;

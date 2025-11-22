@@ -257,6 +257,14 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   // ---------------------------------------------------------------------
   const quotaPercentage = quota && quota.messages_limit > 0 ? (quota.remaining / quota.messages_limit) * 100 : 0;
 
+  // Helper function to format quota display - show ∞ for Pro plan
+  const formatQuotaDisplay = (value: number) => {
+    if (value >= 999999 || quota?.plan_type === 'pro') {
+      return '∞';
+    }
+    return value.toLocaleString();
+  };
+
   // ---------------------------------------------------------------------
   // Render based on appState
   // ---------------------------------------------------------------------
@@ -488,7 +496,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                       <Skeleton className="h-8 w-20" />
                     ) : (
                       <div className="text-2xl font-bold">
-                        {stats.quotaRemaining} / {stats.quotaLimit}
+                        {formatQuotaDisplay(stats.quotaRemaining)} / {formatQuotaDisplay(stats.quotaLimit)}
                       </div>
                     )}
                     <Progress value={quotaPercentage} className="h-2 mt-2" />

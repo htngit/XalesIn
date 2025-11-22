@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
@@ -27,7 +28,6 @@ import {
 
 // Placeholder content component for when data is loaded
 function HistoryPageContent({
-  logs,
   filteredLogs,
   searchQuery,
   setSearchQuery,
@@ -38,7 +38,6 @@ function HistoryPageContent({
   formatDate,
   stats
 }: {
-  logs: MessageLog[];
   filteredLogs: MessageLog[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -50,6 +49,7 @@ function HistoryPageContent({
   stats: any;
 }) {
   const navigate = useNavigate();
+  const intl = useIntl();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -60,16 +60,16 @@ function HistoryPageContent({
             <div className="flex items-center space-x-4">
               <Button variant="ghost" onClick={() => navigate('/dashboard')}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                {intl.formatMessage({ id: 'common.button.back', defaultMessage: 'Back' })}
               </Button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Message History</h1>
-                <p className="text-gray-600">View individual message sending logs</p>
+                <h1 className="text-3xl font-bold text-gray-900">{intl.formatMessage({ id: 'history.title', defaultMessage: 'Message History' })}</h1>
+                <p className="text-gray-600">{intl.formatMessage({ id: 'history.subtitle', defaultMessage: 'View individual message sending logs' })}</p>
               </div>
             </div>
             <Button variant="outline" onClick={() => navigate('/campaign-history')}>
               <MessageSquare className="h-4 w-4 mr-2" />
-              View Activity Logs
+              {intl.formatMessage({ id: 'history.button.view_activity', defaultMessage: 'View Activity Logs' })}
             </Button>
           </div>
 
@@ -77,34 +77,34 @@ function HistoryPageContent({
           <Stagger staggerDelay={0.1} className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <AnimatedCard animation="slideUp" delay={0.1}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Messages</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'history.stats.total', defaultMessage: 'Total Messages' })}</CardTitle>
                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.total}</div>
-                <p className="text-xs text-muted-foreground">All time messages</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'history.stats.total.desc', defaultMessage: 'All time messages' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.2}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Delivered</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'history.stats.delivered', defaultMessage: 'Delivered' })}</CardTitle>
                 <CheckCircle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.sent}</div>
-                <p className="text-xs text-muted-foreground">Successfully sent</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'history.stats.delivered.desc', defaultMessage: 'Successfully sent' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.3}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Failed</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'history.stats.failed', defaultMessage: 'Failed' })}</CardTitle>
                 <XCircle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.failed}</div>
-                <p className="text-xs text-muted-foreground">Failed delivery</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'history.stats.failed.desc', defaultMessage: 'Failed delivery' })}</p>
               </CardContent>
             </AnimatedCard>
           </Stagger>
@@ -112,7 +112,7 @@ function HistoryPageContent({
           {/* Filters */}
           <AnimatedCard animation="fadeIn" delay={0.5}>
             <CardHeader>
-              <CardTitle>Search & Filter</CardTitle>
+              <CardTitle>{intl.formatMessage({ id: 'history.search.title', defaultMessage: 'Search & Filter' })}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col md:flex-row gap-4">
@@ -120,7 +120,7 @@ function HistoryPageContent({
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search by name or phone..."
+                      placeholder={intl.formatMessage({ id: 'history.search.placeholder', defaultMessage: 'Search by name or phone...' })}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -130,13 +130,13 @@ function HistoryPageContent({
                 <div className="flex gap-2">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Filter by status" />
+                      <SelectValue placeholder={intl.formatMessage({ id: 'history.filter.status.placeholder', defaultMessage: 'Filter by status' })} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="sent">Sent</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="all">{intl.formatMessage({ id: 'history.filter.status.all', defaultMessage: 'All Status' })}</SelectItem>
+                      <SelectItem value="sent">{intl.formatMessage({ id: 'history.filter.status.sent', defaultMessage: 'Sent' })}</SelectItem>
+                      <SelectItem value="failed">{intl.formatMessage({ id: 'history.filter.status.failed', defaultMessage: 'Failed' })}</SelectItem>
+                      <SelectItem value="pending">{intl.formatMessage({ id: 'history.filter.status.pending', defaultMessage: 'Pending' })}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -147,28 +147,28 @@ function HistoryPageContent({
           {/* Message Logs Table */}
           <AnimatedCard animation="fadeIn" delay={0.6} className="mt-6">
             <CardHeader>
-              <CardTitle>Message Logs ({filteredLogs.length})</CardTitle>
+              <CardTitle>{intl.formatMessage({ id: 'history.list.title', defaultMessage: 'Message Logs' })} ({filteredLogs.length})</CardTitle>
               <CardDescription>
-                Detailed log of individual messages sent
+                {intl.formatMessage({ id: 'history.list.desc', defaultMessage: 'Detailed log of individual messages sent' })}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {filteredLogs.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   {searchQuery || statusFilter !== 'all'
-                    ? 'No message logs found matching your filters.'
-                    : 'No message logs yet.'}
+                    ? intl.formatMessage({ id: 'history.empty.search', defaultMessage: 'No message logs found matching your filters.' })
+                    : intl.formatMessage({ id: 'history.empty.all', defaultMessage: 'No message logs yet.' })}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Contact Name</TableHead>
-                        <TableHead>Phone Number</TableHead>
-                        <TableHead>Sent At</TableHead>
-                        <TableHead>Details</TableHead>
+                        <TableHead>{intl.formatMessage({ id: 'history.list.header.status', defaultMessage: 'Status' })}</TableHead>
+                        <TableHead>{intl.formatMessage({ id: 'history.list.header.contact', defaultMessage: 'Contact Name' })}</TableHead>
+                        <TableHead>{intl.formatMessage({ id: 'history.list.header.phone', defaultMessage: 'Phone Number' })}</TableHead>
+                        <TableHead>{intl.formatMessage({ id: 'history.list.header.sent_at', defaultMessage: 'Sent At' })}</TableHead>
+                        <TableHead>{intl.formatMessage({ id: 'history.list.header.details', defaultMessage: 'Details' })}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -222,6 +222,7 @@ function HistoryPageContent({
 
 export function HistoryPage() {
   const { historyService, isInitialized } = useServices();
+  const intl = useIntl();
   const [logs, setLogs] = useState<MessageLog[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<MessageLog[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -329,7 +330,7 @@ export function HistoryPage() {
   const stats = getStats();
 
   if (isLoading) {
-    return <LoadingScreen message="Loading message history..." />;
+    return <LoadingScreen message={intl.formatMessage({ id: 'history.loading', defaultMessage: 'Loading message history...' })} />;
   }
 
   if (error) {
@@ -338,7 +339,6 @@ export function HistoryPage() {
 
   return (
     <HistoryPageContent
-      logs={logs}
       filteredLogs={filteredLogs}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}

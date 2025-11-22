@@ -24,6 +24,8 @@ export function PaymentTab() {
         setIsModalOpen(true);
     };
 
+
+
     const handleConfirmPayment = async (paymentMethod: string) => {
         if (!selectedPlan) return;
 
@@ -72,13 +74,14 @@ export function PaymentTab() {
                 </TabsContent>
 
                 <TabsContent value="plans" className="space-y-6">
+
                     <div className="text-center space-y-2 mb-8">
                         <h2 className="text-3xl font-bold">Choose Your Plan</h2>
                         <p className="text-muted-foreground">Select the plan that best fits your needs</p>
                     </div>
                     <PricingPlans
                         plans={plans || []}
-                        currentPlanType={subscription?.plan_type || 'free'}
+                        currentPlanType={quota?.plan_type || subscription?.plan_type || 'free'}
                         onSelectPlan={handleSelectPlan}
                         isLoading={isLoading}
                     />

@@ -14,7 +14,7 @@ export interface Quota {
   id: string;
   user_id: string;
   master_user_id: string;
-  plan_type: 'basic' | 'premium' | 'enterprise';
+  plan_type: 'free' | 'basic' | 'pro';
   messages_limit: number;
   messages_used: number;
   remaining: number; // Calculated field: messages_limit - messages_used
@@ -184,7 +184,7 @@ export interface PINValidation {
 }
 
 // Payment-related types
-export type SubscriptionPlan = 'basic' | 'premium' | 'enterprise';
+export type SubscriptionPlan = 'free' | 'basic' | 'pro';
 
 export interface DUITKUResponse {
   transactionId: string;

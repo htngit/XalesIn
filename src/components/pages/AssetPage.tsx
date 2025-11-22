@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { useServices } from '@/lib/services/ServiceContext';
@@ -73,6 +74,7 @@ function AssetPageContent({
   getFileIcon: (category: AssetFileLocal['category']) => React.ComponentType<any>;
 }) {
   const navigate = useNavigate();
+  const intl = useIntl();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -82,11 +84,11 @@ function AssetPageContent({
           <div className="flex items-center mb-8">
             <Button variant="ghost" onClick={() => navigate('/dashboard')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              {intl.formatMessage({ id: 'common.button.back', defaultMessage: 'Back' })}
             </Button>
             <div className="ml-4">
-              <h1 className="text-3xl font-bold text-gray-900">Asset Files</h1>
-              <p className="text-gray-600">Upload and manage your media assets and documents</p>
+              <h1 className="text-3xl font-bold text-gray-900">{intl.formatMessage({ id: 'assets.title', defaultMessage: 'Asset Files' })}</h1>
+              <p className="text-gray-600">{intl.formatMessage({ id: 'assets.subtitle', defaultMessage: 'Upload and manage your media assets and documents' })}</p>
             </div>
           </div>
 
@@ -94,56 +96,56 @@ function AssetPageContent({
           <Stagger staggerDelay={0.1} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
             <AnimatedCard animation="slideUp" delay={0.1}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Files</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'assets.stats.total', defaultMessage: 'Total Files' })}</CardTitle>
                 <FolderOpen className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.totalFiles}</div>
-                <p className="text-xs text-muted-foreground">Uploaded files</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'assets.stats.total.desc', defaultMessage: 'Uploaded files' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.2}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Size</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'assets.stats.size', defaultMessage: 'Total Size' })}</CardTitle>
                 <HardDrive className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatFileSize(stats.totalSize)}</div>
-                <p className="text-xs text-muted-foreground">Storage used</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'assets.stats.size.desc', defaultMessage: 'Storage used' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.3}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Images</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'assets.stats.images', defaultMessage: 'Images' })}</CardTitle>
                 <FileImage className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.images}</div>
-                <p className="text-xs text-muted-foreground">JPG, PNG</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'assets.stats.images.desc', defaultMessage: 'JPG, PNG' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.4}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Videos</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'assets.stats.videos', defaultMessage: 'Videos' })}</CardTitle>
                 <FileVideo className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.videos}</div>
-                <p className="text-xs text-muted-foreground">MP4 files</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'assets.stats.videos.desc', defaultMessage: 'MP4 files' })}</p>
               </CardContent>
             </AnimatedCard>
 
             <AnimatedCard animation="slideUp" delay={0.5}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Documents</CardTitle>
+                <CardTitle className="text-sm font-medium">{intl.formatMessage({ id: 'assets.stats.documents', defaultMessage: 'Documents' })}</CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.documents}</div>
-                <p className="text-xs text-muted-foreground">PDF files</p>
+                <p className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'assets.stats.documents.desc', defaultMessage: 'PDF files' })}</p>
               </CardContent>
             </AnimatedCard>
           </Stagger>
@@ -151,9 +153,9 @@ function AssetPageContent({
           {/* Upload Area */}
           <AnimatedCard animation="fadeIn" delay={0.6} className="mb-8">
             <CardHeader>
-              <CardTitle>Upload Files</CardTitle>
+              <CardTitle>{intl.formatMessage({ id: 'assets.upload.title', defaultMessage: 'Upload Files' })}</CardTitle>
               <CardDescription>
-                Drag and drop your files here, or click to browse. Only <strong>PNG, JPG, PDF, and MP4</strong> files are accepted, up to 10MB each.
+                {intl.formatMessage({ id: 'assets.upload.desc', defaultMessage: 'Drag and drop your files here, or click to browse. Only PNG, JPG, PDF, and MP4 files are accepted, up to 10MB each.' })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -171,15 +173,15 @@ function AssetPageContent({
                   </div>
                   <div>
                     <p className="text-lg font-medium">
-                      {isDragActive ? 'Drop files here' : 'Upload your files'}
+                      {isDragActive ? intl.formatMessage({ id: 'assets.upload.drop_active', defaultMessage: 'Drop files here' }) : intl.formatMessage({ id: 'assets.upload.drop_idle', defaultMessage: 'Upload your files' })}
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
-                      or click to browse your computer
+                      {intl.formatMessage({ id: 'assets.upload.browse', defaultMessage: 'or click to browse your computer' })}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2 text-xs text-gray-400">
                     <Zap className="h-3 w-3" />
-                    <span>Accepted: JPG, PNG, PDF, MP4 • Max size: 10MB</span>
+                    <span>{intl.formatMessage({ id: 'assets.upload.accepted', defaultMessage: 'Accepted: JPG, PNG, PDF, MP4 • Max size: 10MB' })}</span>
                   </div>
                 </div>
               </div>
@@ -188,7 +190,7 @@ function AssetPageContent({
               {isUploading && (
                 <div className="mt-4">
                   <div className="flex justify-between text-sm mb-2">
-                    <span>Uploading...</span>
+                    <span>{intl.formatMessage({ id: 'assets.upload.uploading', defaultMessage: 'Uploading...' })}</span>
                     <span>{uploadProgress.toFixed(0)}%</span>
                   </div>
                   <Progress value={uploadProgress} className="w-full" />
@@ -201,9 +203,9 @@ function AssetPageContent({
           {files.length > 0 && (
             <AnimatedCard animation="fadeIn" delay={0.7}>
               <CardHeader>
-                <CardTitle>Uploaded Files ({files.length})</CardTitle>
+                <CardTitle>{intl.formatMessage({ id: 'assets.list.title', defaultMessage: 'Uploaded Files' })} ({files.length})</CardTitle>
                 <CardDescription>
-                  Manage your uploaded assets and documents
+                  {intl.formatMessage({ id: 'assets.list.desc', defaultMessage: 'Manage your uploaded assets and documents' })}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -297,9 +299,9 @@ function AssetPageContent({
                       <FolderOpen className="h-12 w-12 text-gray-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-medium text-gray-900">No files uploaded yet</h3>
+                      <h3 className="text-lg font-medium text-gray-900">{intl.formatMessage({ id: 'assets.empty.title', defaultMessage: 'No files uploaded yet' })}</h3>
                       <p className="text-gray-500 mt-1">
-                        Upload your first file to get started with asset management
+                        {intl.formatMessage({ id: 'assets.empty.desc', defaultMessage: 'Upload your first file to get started with asset management' })}
                       </p>
                     </div>
                   </div>
@@ -331,6 +333,7 @@ export function AssetPage() {
   const [previewFile, setPreviewFile] = useState<AssetFileLocal | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const { toast } = useToast();
+  const intl = useIntl();
 
   // File validation guard - only allow PNG, JPG, PDF, MP4
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
@@ -513,8 +516,8 @@ export function AssetPage() {
         } catch (err) {
           console.error(`Failed to upload ${file.name}:`, err);
           toast({
-            title: "Upload Failed",
-            description: `Failed to upload ${file.name}. Please try again.`,
+            title: intl.formatMessage({ id: 'assets.toast.upload_failed', defaultMessage: 'Upload Failed' }),
+            description: intl.formatMessage({ id: 'assets.toast.upload_failed.desc', defaultMessage: 'Failed to upload {name}. Please try again.' }, { name: file.name }),
             variant: "destructive",
           });
         }
@@ -522,15 +525,15 @@ export function AssetPage() {
 
       if (completedFiles > 0) {
         toast({
-          title: "Upload Successful",
-          description: `${completedFiles} file(s) uploaded successfully.`,
+          title: intl.formatMessage({ id: 'assets.toast.upload_success', defaultMessage: 'Upload Successful' }),
+          description: intl.formatMessage({ id: 'assets.toast.upload_success.desc', defaultMessage: '{count} file(s) uploaded successfully.' }, { count: completedFiles }),
         });
       }
     } catch (error) {
       console.error('Upload process error:', error);
       toast({
-        title: "Upload Error",
-        description: "An unexpected error occurred during upload.",
+        title: intl.formatMessage({ id: 'assets.toast.upload_error', defaultMessage: 'Upload Error' }),
+        description: intl.formatMessage({ id: 'assets.toast.upload_error.desc', defaultMessage: 'An unexpected error occurred during upload.' }),
         variant: "destructive",
       });
     } finally {
@@ -559,14 +562,14 @@ export function AssetPage() {
         rejection.errors.forEach(error => {
           if (error.code === 'file-invalid-type') {
             toast({
-              title: "File Type Rejected",
-              description: `${rejection.file.name}: Only PNG, JPG, PDF, and MP4 files are allowed.`,
+              title: intl.formatMessage({ id: 'assets.toast.invalid_type', defaultMessage: 'File Type Rejected' }),
+              description: intl.formatMessage({ id: 'assets.toast.invalid_type.desc', defaultMessage: '{name}: Only PNG, JPG, PDF, and MP4 files are allowed.' }, { name: rejection.file.name }),
               variant: "destructive",
             });
           } else if (error.code === 'file-too-large') {
             toast({
-              title: "File Too Large",
-              description: `${rejection.file.name}: File size exceeds 10MB limit.`,
+              title: intl.formatMessage({ id: 'assets.toast.too_large', defaultMessage: 'File Too Large' }),
+              description: intl.formatMessage({ id: 'assets.toast.too_large.desc', defaultMessage: '{name}: File size exceeds 10MB limit.' }, { name: rejection.file.name }),
               variant: "destructive",
             });
           }
@@ -615,8 +618,8 @@ export function AssetPage() {
       await assetService.deleteAsset(id);
 
       toast({
-        title: "File Deleted",
-        description: "File has been deleted successfully.",
+        title: intl.formatMessage({ id: 'assets.toast.delete_success', defaultMessage: 'File Deleted' }),
+        description: intl.formatMessage({ id: 'assets.toast.delete_success.desc', defaultMessage: 'File has been deleted successfully.' }),
       });
     } catch (error) {
       console.error('Delete failed:', error);
@@ -626,8 +629,8 @@ export function AssetPage() {
       }
 
       toast({
-        title: "Delete Failed",
-        description: "Failed to delete file. Please try again.",
+        title: intl.formatMessage({ id: 'assets.toast.delete_failed', defaultMessage: 'Delete Failed' }),
+        description: intl.formatMessage({ id: 'assets.toast.delete_failed.desc', defaultMessage: 'Failed to delete file. Please try again.' }),
         variant: "destructive",
       });
     }

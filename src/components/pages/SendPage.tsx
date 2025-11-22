@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
@@ -33,9 +34,14 @@ import {
   X
 } from 'lucide-react';
 
-interface SendPageProps {
-  userName?: string;
-}
+const PRESET_DELAYS = [1, 3, 5, 10, 15, 30, 60, 120, 300, 600, 900];
+
+const formatDelayLabel = (seconds: number) => {
+  if (seconds >= 60) {
+    return `${Math.floor(seconds / 60)}m`;
+  }
+  return `${seconds}s`;
+};
 
 // Placeholder content component for when data is loaded
 function SendPageContent({
@@ -51,6 +57,8 @@ function SendPageContent({
   selectedAssets,
   delayRange,
   setDelayRange,
+  sendingMode,
+  setSendingMode,
   isSending,
   sendResult,
   simulateSend,
@@ -76,6 +84,8 @@ function SendPageContent({
   selectedAssets: string[];
   delayRange: number[];
   setDelayRange: (range: number[]) => void;
+  sendingMode: 'static' | 'dynamic';
+  setSendingMode: (mode: 'static' | 'dynamic') => void;
   isSending: boolean;
   sendResult: any;
   simulateSend: () => void;
@@ -90,6 +100,7 @@ function SendPageContent({
   formatFileSize: (bytes: number) => string;
 }) {
   const navigate = useNavigate();
+  const intl = useIntl();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -100,16 +111,16 @@ function SendPageContent({
             <div className="flex items-center space-x-4">
               <Button variant="ghost" onClick={() => navigate('/dashboard')}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                {intl.formatMessage({ id: 'common.button.back', defaultMessage: 'Back' })}
               </Button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Send Messages</h1>
-                <p className="text-gray-600">Configure and send WhatsApp messages to contact groups</p>
+                <h1 className="text-3xl font-bold text-gray-900">{intl.formatMessage({ id: 'send.title', defaultMessage: 'Send Messages' })}</h1>
+                <p className="text-gray-600">{intl.formatMessage({ id: 'send.subtitle', defaultMessage: 'Configure and send WhatsApp messages to contact groups' })}</p>
               </div>
             </div>
             <Button variant="outline" onClick={() => navigate('/groups')}>
               <Settings className="h-4 w-4 mr-2" />
-              Manage Groups
+              {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
             </Button>
           </div>
 
@@ -121,20 +132,20 @@ function SendPageContent({
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Target className="h-5 w-5" />
-                    <span>Target Group</span>
+                    <span>{intl.formatMessage({ id: 'send.config.target.title', defaultMessage: 'Target Group' })}</span>
                   </CardTitle>
-                  <CardDescription>Select which contact group will receive the message</CardDescription>
+                  <CardDescription>{intl.formatMessage({ id: 'send.config.target.desc', defaultMessage: 'Select which contact group will receive the message' })}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="group-select">Contact Group</Label>
+                      <Label htmlFor="group-select">{intl.formatMessage({ id: 'send.config.target.label', defaultMessage: 'Contact Group' })}</Label>
                       <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select contact group" />
+                          <SelectValue placeholder={intl.formatMessage({ id: 'send.config.target.placeholder', defaultMessage: 'Select contact group' })} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Contacts ({contacts.length})</SelectItem>
+                          <SelectItem value="all">{intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })} ({contacts.length})</SelectItem>
                           {groups.map((group) => (
                             <SelectItem key={group.id} value={group.id}>
                               <div className="flex items-center space-x-2">
@@ -152,7 +163,7 @@ function SendPageContent({
 
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Target Contacts:</span>
+                        <span className="text-sm font-medium">{intl.formatMessage({ id: 'send.config.target.summary', defaultMessage: 'Target Contacts:' })}</span>
                         <Badge variant="secondary">{targetContacts.length}</Badge>
                       </div>
                       {selectedGroupId !== 'all' && (
@@ -174,17 +185,17 @@ function SendPageContent({
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <MessageSquare className="h-5 w-5" />
-                    <span>Message Template</span>
+                    <span>{intl.formatMessage({ id: 'send.config.template.title', defaultMessage: 'Message Template' })}</span>
                   </CardTitle>
-                  <CardDescription>Choose the message template to send</CardDescription>
+                  <CardDescription>{intl.formatMessage({ id: 'send.config.template.desc', defaultMessage: 'Choose the message template to send' })}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="template-select">Template</Label>
+                      <Label htmlFor="template-select">{intl.formatMessage({ id: 'send.config.template.label', defaultMessage: 'Template' })}</Label>
                       <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a template" />
+                          <SelectValue placeholder={intl.formatMessage({ id: 'send.config.template.placeholder', defaultMessage: 'Select a template' })} />
                         </SelectTrigger>
                         <SelectContent>
                           {templates.map((template) => (
@@ -199,25 +210,25 @@ function SendPageContent({
                     {selectedTemplateData && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between mb-2">
-                          <Label>Template Info:</Label>
+                          <Label>{intl.formatMessage({ id: 'send.config.template.info', defaultMessage: 'Template Info:' })}</Label>
                           <Badge variant="secondary" className="text-xs">
                             {selectedTemplateData.variants?.length || 1} variants
                           </Badge>
                         </div>
 
                         <div>
-                          <Label>Random Preview:</Label>
+                          <Label>{intl.formatMessage({ id: 'send.config.template.preview', defaultMessage: 'Random Preview:' })}</Label>
                           <div className="bg-gray-50 p-3 rounded border text-sm">
                             {previewMessage()}
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">
-                            ℹ️ Each message will use a random variant to avoid pattern detection
+                            {intl.formatMessage({ id: 'send.config.template.help', defaultMessage: 'ℹ️ Each message will use a random variant to avoid pattern detection' })}
                           </p>
                         </div>
 
                         {selectedTemplateData.variables && selectedTemplateData.variables.length > 0 && (
                           <div>
-                            <Label>Variables:</Label>
+                            <Label>{intl.formatMessage({ id: 'send.config.template.variables', defaultMessage: 'Variables:' })}</Label>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {selectedTemplateData.variables.map((variable) => (
                                 <Badge key={variable} variant="outline" className="text-xs">
@@ -238,22 +249,22 @@ function SendPageContent({
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Paperclip className="h-5 w-5" />
-                    <span>Attach Assets</span>
+                    <span>{intl.formatMessage({ id: 'send.config.assets.title', defaultMessage: 'Attach Assets' })}</span>
                   </CardTitle>
-                  <CardDescription>Select files to attach with your message (optional)</CardDescription>
+                  <CardDescription>{intl.formatMessage({ id: 'send.config.assets.desc', defaultMessage: 'Select files to attach with your message (optional)' })}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label>Available Assets ({assets.length})</Label>
+                      <Label>{intl.formatMessage({ id: 'send.config.assets.available', defaultMessage: 'Available Assets' })} ({assets.length})</Label>
                       {assets.length === 0 ? (
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                           <div className="flex items-center space-x-2 text-blue-700">
                             <FileImage className="h-4 w-4" />
-                            <span className="text-sm">No assets available</span>
+                            <span className="text-sm">{intl.formatMessage({ id: 'send.config.assets.empty', defaultMessage: 'No assets available' })}</span>
                           </div>
                           <p className="text-xs text-blue-600 mt-1">
-                            Upload assets first in the Assets page to use them here
+                            {intl.formatMessage({ id: 'send.config.assets.upload_hint', defaultMessage: 'Upload assets first in the Assets page to use them here' })}
                           </p>
                         </div>
                       ) : (
@@ -305,7 +316,7 @@ function SendPageContent({
 
                     {selectedAssets.length > 0 && (
                       <div>
-                        <Label>Selected Assets ({selectedAssets.length}):</Label>
+                        <Label>{intl.formatMessage({ id: 'send.config.assets.selected', defaultMessage: 'Selected Assets' })} ({selectedAssets.length}):</Label>
                         <div className="mt-2 space-y-2">
                           {getSelectedAssets().map((asset) => {
                             const IconComponent = getAssetIcon(asset.category);
@@ -341,25 +352,86 @@ function SendPageContent({
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Clock className="h-5 w-5" />
-                    <span>Send Configuration</span>
+                    <span>{intl.formatMessage({ id: 'send.config.delay.title', defaultMessage: 'Send Configuration' })}</span>
                   </CardTitle>
-                  <CardDescription>Configure timing and delivery settings</CardDescription>
+                  <CardDescription>{intl.formatMessage({ id: 'send.config.delay.desc', defaultMessage: 'Configure timing and delivery settings' })}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label>Delay Range: {delayRange[0]} seconds</Label>
+                      <Label className="mb-2 block">{intl.formatMessage({ id: 'send.mode.label', defaultMessage: 'Sending Mode' })}</Label>
+                      <Select value={sendingMode} onValueChange={(value: 'static' | 'dynamic') => {
+                        setSendingMode(value);
+                        // Reset delay range based on mode
+                        if (value === 'static') {
+                          // Default to 3s
+                          setDelayRange([3]);
+                        } else {
+                          // Default to 3s - 10s
+                          setDelayRange([3, 10]);
+                        }
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={intl.formatMessage({ id: 'send.mode.placeholder', defaultMessage: 'Select sending mode' })} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="static">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{intl.formatMessage({ id: 'send.mode.static', defaultMessage: 'Static Delay' })}</span>
+                              <span className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'send.mode.static.desc', defaultMessage: 'Fixed delay between messages' })}</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="dynamic">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{intl.formatMessage({ id: 'send.mode.dynamic', defaultMessage: 'Dynamic Delay' })}</span>
+                              <span className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'send.mode.dynamic.desc', defaultMessage: 'Random delay between min and max range' })}</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <Label>
+                          {sendingMode === 'static'
+                            ? intl.formatMessage({ id: 'send.config.delay.static', defaultMessage: 'Delay' })
+                            : intl.formatMessage({ id: 'send.config.delay.label', defaultMessage: 'Delay Range' })
+                          }
+                        </Label>
+                        <span className="text-sm font-medium text-primary">
+                          {sendingMode === 'static'
+                            ? formatDelayLabel(delayRange[0])
+                            : `${formatDelayLabel(delayRange[0])} - ${formatDelayLabel(delayRange[1] || delayRange[0])}`
+                          }
+                        </span>
+                      </div>
+
                       <Slider
-                        value={delayRange}
-                        onValueChange={setDelayRange}
-                        max={10}
-                        min={1}
+                        value={sendingMode === 'static'
+                          ? [PRESET_DELAYS.indexOf(delayRange[0]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[0]) : 0]
+                          : [
+                            PRESET_DELAYS.indexOf(delayRange[0]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[0]) : 0,
+                            PRESET_DELAYS.indexOf(delayRange[1]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[1]) : 1
+                          ]
+                        }
+                        onValueChange={(vals) => {
+                          if (sendingMode === 'static') {
+                            setDelayRange([PRESET_DELAYS[vals[0]]]);
+                          } else {
+                            setDelayRange([PRESET_DELAYS[vals[0]], PRESET_DELAYS[vals[1]]]);
+                          }
+                        }}
+                        max={PRESET_DELAYS.length - 1}
+                        min={0}
                         step={1}
+                        minStepsBetweenThumbs={1}
+                        showMarks={true}
                         className="mt-2"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                        <span>1s (Fast)</span>
-                        <span>10s (Safe)</span>
+                        <span>{intl.formatMessage({ id: 'send.config.delay.min', defaultMessage: 'Min: 1s' })}</span>
+                        <span>{intl.formatMessage({ id: 'send.config.delay.help', defaultMessage: 'Max: 15m' })}</span>
                       </div>
                     </div>
 
@@ -367,16 +439,17 @@ function SendPageContent({
                       <div className="flex items-start space-x-2">
                         <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
                         <div className="text-sm">
-                          <p className="font-medium text-yellow-800">Send Configuration Summary:</p>
+                          <p className="font-medium text-yellow-800">{intl.formatMessage({ id: 'send.config.summary.title', defaultMessage: 'Send Configuration Summary:' })}</p>
                           <ul className="text-yellow-700 mt-1 space-y-1">
-                            <li>• Target: {targetContacts.length} contacts</li>
-                            <li>• Group: {selectedGroupData.name}</li>
-                            <li>• Template: {selectedTemplateData?.name || 'Not selected'}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.target', defaultMessage: 'Target: {count} contacts' }, { count: targetContacts.length })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.group', defaultMessage: 'Group: {name}' }, { name: selectedGroupData.name })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.template', defaultMessage: 'Template: {name}' }, { name: selectedTemplateData?.name || 'Not selected' })}</li>
                             {selectedAssets.length > 0 && (
-                              <li>• Assets: {selectedAssets.length} file(s) attached</li>
+                              <li>• {intl.formatMessage({ id: 'send.config.summary.assets', defaultMessage: 'Assets: {count} file(s) attached' }, { count: selectedAssets.length })}</li>
                             )}
-                            <li>• Delay: {delayRange[0]}s between messages</li>
-                            <li>• Estimated time: ~{Math.ceil(targetContacts.length * delayRange[0] / 60)} minutes</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.mode', defaultMessage: 'Mode: {mode}' }, { mode: sendingMode === 'static' ? intl.formatMessage({ id: 'send.mode.static' }) : intl.formatMessage({ id: 'send.mode.dynamic' }) })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.delay', defaultMessage: 'Delay: {seconds}s between messages' }, { seconds: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}` })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.time', defaultMessage: 'Estimated time: ~{minutes} minutes' }, { minutes: Math.ceil(targetContacts.length * (sendingMode === 'static' ? delayRange[0] : (delayRange[0] + delayRange[1]) / 2) / 60) })}</li>
                           </ul>
                         </div>
                       </div>
@@ -393,30 +466,30 @@ function SendPageContent({
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Zap className="h-5 w-5" />
-                    <span>Quota Status</span>
+                    <span>{intl.formatMessage({ id: 'send.quota.title', defaultMessage: 'Quota Status' })}</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {quota ? (
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm">Remaining:</span>
+                        <span className="text-sm">{intl.formatMessage({ id: 'send.quota.remaining', defaultMessage: 'Remaining:' })}</span>
                         <Badge variant={quota.remaining >= targetContacts.length ? 'default' : 'destructive'}>
                           {quota.remaining}
                         </Badge>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm">Required:</span>
+                        <span className="text-sm">{intl.formatMessage({ id: 'send.quota.required', defaultMessage: 'Required:' })}</span>
                         <Badge variant="secondary">{targetContacts.length}</Badge>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm">Plan:</span>
+                        <span className="text-sm">{intl.formatMessage({ id: 'send.quota.plan', defaultMessage: 'Plan:' })}</span>
                         <Badge variant="outline">{quota.plan_type}</Badge>
                       </div>
                     </div>
                   ) : (
                     <div className="text-center text-sm text-muted-foreground">
-                      Loading quota...
+                      {intl.formatMessage({ id: 'common.status.loading', defaultMessage: 'Loading...' })}
                     </div>
                   )}
                 </CardContent>
@@ -436,12 +509,12 @@ function SendPageContent({
                     {isSending ? (
                       <>
                         <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                        Sending...
+                        {intl.formatMessage({ id: 'send.button.sending', defaultMessage: 'Sending...' })}
                       </>
                     ) : (
                       <>
                         <Send className="h-4 w-4 mr-2" />
-                        Reserve & Send
+                        {intl.formatMessage({ id: 'send.button.send', defaultMessage: 'Reserve & Send' })}
                       </>
                     )}
                   </AnimatedButton>
@@ -450,10 +523,10 @@ function SendPageContent({
                     <Alert className="mt-3">
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription>
-                        {!selectedTemplate ? 'Please select a template' :
-                          targetContacts.length === 0 ? 'No contacts in selected group' :
-                            quota && quota.remaining < targetContacts.length ? 'Insufficient quota' :
-                              'Complete all required fields'}
+                        {!selectedTemplate ? intl.formatMessage({ id: 'send.alert.select_template', defaultMessage: 'Please select a template' }) :
+                          targetContacts.length === 0 ? intl.formatMessage({ id: 'send.alert.no_contacts', defaultMessage: 'No contacts in selected group' }) :
+                            quota && quota.remaining < targetContacts.length ? intl.formatMessage({ id: 'send.alert.insufficient_quota', defaultMessage: 'Insufficient quota' }) :
+                              intl.formatMessage({ id: 'send.alert.complete_fields', defaultMessage: 'Complete all required fields' })}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -470,26 +543,26 @@ function SendPageContent({
                       ) : (
                         <AlertTriangle className="h-5 w-5 text-red-600" />
                       )}
-                      <span>Send Result</span>
+                      <span>{intl.formatMessage({ id: 'send.result.title', defaultMessage: 'Send Result' })}</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {sendResult.success ? (
                       <div className="space-y-2">
                         <div className="flex justify-between">
-                          <span className="text-sm">Status:</span>
-                          <Badge className="bg-green-600">Completed</Badge>
+                          <span className="text-sm">{intl.formatMessage({ id: 'send.result.status', defaultMessage: 'Status:' })}</span>
+                          <Badge className="bg-green-600">{intl.formatMessage({ id: 'send.result.completed', defaultMessage: 'Completed' })}</Badge>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm">Total Sent:</span>
+                          <span className="text-sm">{intl.formatMessage({ id: 'send.result.total', defaultMessage: 'Total Sent:' })}</span>
                           <span className="font-medium">{sendResult.totalContacts}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm">Successful:</span>
+                          <span className="text-sm">{intl.formatMessage({ id: 'send.result.success', defaultMessage: 'Successful:' })}</span>
                           <span className="font-medium text-green-600">{sendResult.successCount}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm">Failed:</span>
+                          <span className="text-sm">{intl.formatMessage({ id: 'send.result.failed', defaultMessage: 'Failed:' })}</span>
                           <span className="font-medium text-red-600">{sendResult.failedCount}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-3">
@@ -520,8 +593,17 @@ function SendPageContent({
   );
 }
 
-export function SendPage({ userName: _userName }: SendPageProps) {
-  const { contactService, templateService, quotaService, groupService, assetService, historyService, isInitialized } = useServices();
+export function SendPage({ userName }: { userName: string }) {
+  const {
+    contactService,
+    templateService,
+    quotaService,
+    groupService,
+    historyService,
+    assetService,
+    isInitialized
+  } = useServices();
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
@@ -530,11 +612,13 @@ export function SendPage({ userName: _userName }: SendPageProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
+  const [sendingMode, setSendingMode] = useState<'static' | 'dynamic'>('static');
   const [delayRange, setDelayRange] = useState<number[]>([3]);
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const intl = useIntl();
 
   const loadData = async () => {
     try {
@@ -643,6 +727,24 @@ export function SendPage({ userName: _userName }: SendPageProps) {
       }
 
       // Step 2: Simulate sending process
+      // BACKEND IMPLEMENTATION NOTE:
+      // When implementing the actual sending logic in the backend (WhatsApp Web JS):
+      //
+      // 1. Static Mode (sendingMode === 'static'):
+      //    - Use a fixed delay between each message.
+      //    - Delay = delayRange[0] (in seconds).
+      //    - Example: sleep(delayRange[0] * 1000)
+      //
+      // 2. Dynamic Mode (sendingMode === 'dynamic'):
+      //    - Use a random delay for each message within the specified range.
+      //    - Range = [delayRange[0], delayRange[1]] (in seconds).
+      //    - Logic: randomDelay = Math.floor(Math.random() * (max - min + 1)) + min
+      //    - Example: sleep(randomDelay * 1000)
+      //
+      // 3. Queue Management:
+      //    - Ensure the queue respects these delays to avoid banning.
+      //    - Handle "429 Too Many Requests" by pausing and increasing delay temporarily.
+
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Step 3: Generate mock results
@@ -699,7 +801,8 @@ export function SendPage({ userName: _userName }: SendPageProps) {
         templateName: selectedTemplateData.name,
         groupName: selectedGroupData.name,
         selectedAssets: getSelectedAssets(),
-        delayRange: delayRange[0],
+        sendingMode,
+        delayRange: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}`,
         reservationId: reserveResult.reservation_id
       });
 
@@ -751,7 +854,7 @@ export function SendPage({ userName: _userName }: SendPageProps) {
   const canSend = !!(selectedTemplate && targetContacts.length > 0 && quota && quota.remaining >= targetContacts.length);
 
   if (isLoading) {
-    return <LoadingScreen message="Loading send configuration..." />;
+    return <LoadingScreen message={intl.formatMessage({ id: 'common.status.loading', defaultMessage: 'Loading...' })} />;
   }
 
   if (error) {
@@ -770,6 +873,8 @@ export function SendPage({ userName: _userName }: SendPageProps) {
       selectedTemplate={selectedTemplate}
       setSelectedTemplate={setSelectedTemplate}
       selectedAssets={selectedAssets}
+      sendingMode={sendingMode}
+      setSendingMode={setSendingMode}
       delayRange={delayRange}
       setDelayRange={setDelayRange}
       isSending={isSending}

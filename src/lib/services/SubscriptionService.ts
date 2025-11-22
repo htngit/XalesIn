@@ -1,9 +1,9 @@
 import { supabase } from '@/lib/supabase';
-import { Subscription, PricingPlan, PaymentTransaction } from '@/types/subscription';
+import { Subscription, PricingPlan, PaymentTransaction, PlanType } from '@/types/subscription';
 
 export interface UserQuota {
     user_id: string;
-    plan_type: string;
+    plan_type: PlanType;
     messages_limit: number;
     messages_used: number;
     reset_date: string;
