@@ -112,7 +112,7 @@ class UserContextManager {
    */
   private setupSecurityEventListeners() {
     // Listen for authentication state changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    supabase.auth.onAuthStateChange(async (event, _session) => {
       if (event === 'SIGNED_OUT') {
         await this.handleUserLogout();
       }

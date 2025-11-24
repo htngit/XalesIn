@@ -3,14 +3,14 @@ import { supabase, handleDatabaseError } from '../supabase';
 import { db, LocalAsset } from '../db';
 import { SyncManager } from '../sync/SyncManager';
 import { userContextManager } from '../security/UserContextManager';
-import { 
-  toISOString, 
-  fromISOString, 
-  supabaseToLocal, 
-  localToSupabase, 
-  addSyncMetadata, 
+import {
+  toISOString,
+  fromISOString,
+  supabaseToLocal,
+  localToSupabase,
+  addSyncMetadata,
   addTimestamps,
-  standardizeForService 
+  standardizeForService
 } from '../utils/timestamp';
 
 export class AssetService {
@@ -49,10 +49,10 @@ export class AssetService {
   async initialize(masterUserId: string) {
     this.masterUserId = masterUserId;
     this.syncManager.setMasterUserId(masterUserId);
-    
+
     // Start auto sync
     this.syncManager.startAutoSync();
-    
+
     // Initial sync with error handling
     try {
       await this.syncManager.triggerSync();
@@ -68,13 +68,13 @@ export class AssetService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-      
+
       const response = await fetch('/api/ping', {
         method: 'HEAD',
         cache: 'no-cache',
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -101,8 +101,8 @@ export class AssetService {
    * Get the current authenticated user
    */
   private async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
+    const user = await userContextManager.getCurrentUser();
+    if (!user) {
       throw new Error('User not authenticated');
     }
     return user;
@@ -117,7 +117,7 @@ export class AssetService {
     }
 
     const user = await this.getCurrentUser();
-    
+
     // Get user's profile to find master_user_id
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -141,12 +141,12 @@ export class AssetService {
     return localAssets.map(asset => {
       // Use standardized timestamp transformation for assets
       const standardized = standardizeForService(asset, 'asset');
-      
+
       // Handle both old and new property names for backwards compatibility
       const fileSize = asset.file_size || asset.size || 0;
       const fileType = asset.file_type || asset.type || '';
       const fileUrl = asset.file_url || asset.url || '';
-      
+
       return {
         id: asset.id,
         name: asset.name,
@@ -199,7 +199,7 @@ export class AssetService {
 
       // No local data, try to sync from server
       await this.syncManager.triggerSync();
-      
+
       // Try local again after sync
       localAssets = await db.assets
         .where('master_user_id')
@@ -229,7 +229,7 @@ export class AssetService {
 
       // Try local first
       const localAsset = await db.assets.get(id);
-      
+
       if (localAsset && !localAsset._deleted && localAsset.master_user_id === masterUserId) {
         const transformed = this.transformLocalAssets([localAsset]);
         return transformed[0] || null;
@@ -372,7 +372,7 @@ export class AssetService {
 
       // Check if asset exists locally
       const existingAsset = await db.assets.get(id);
-      
+
       if (!existingAsset || existingAsset._deleted) {
         // Try server-side deletion if not found locally
         await this.deleteAssetFromServer(id);
@@ -462,8 +462,8 @@ export class AssetService {
         const category = asset.category;
         // WhatsApp supports: images (jpg, png), documents (pdf), videos (mp4)
         return (category === 'image' && (type.includes('image'))) ||
-               (category === 'document' && type.includes('pdf')) ||
-               (category === 'video' && type.includes('video'));
+          (category === 'document' && type.includes('pdf')) ||
+          (category === 'video' && type.includes('video'));
       });
     } catch (error) {
       console.error('Error fetching WhatsApp compatible assets:', error);
@@ -484,7 +484,7 @@ export class AssetService {
     const type = (asset.type || '').toLowerCase();
     const category = asset.category;
     const size = asset.size || 0;
-    
+
     if (category === 'image' && type.includes('image')) {
       return size <= whatsappLimits.image;
     }
@@ -494,7 +494,7 @@ export class AssetService {
     if (category === 'document' && type.includes('pdf')) {
       return size <= whatsappLimits.document;
     }
-    
+
     return false;
   }
 
@@ -504,15 +504,15 @@ export class AssetService {
   async getAssetStats() {
     try {
       const assets = await this.getAssets();
-      
-      const totalSize = assets.reduce((sum, asset) => sum + asset.size, 0);
+
+      const totalSize = assets.reduce((sum, asset) => sum + (asset.size || 0), 0);
       const categoryStats = assets.reduce((stats, asset) => {
         stats[asset.category] = (stats[asset.category] || 0) + 1;
         return stats;
       }, {} as Record<string, number>);
 
-      const largestAsset = assets.reduce((largest, asset) => 
-        asset.size > largest.size ? asset : largest, 
+      const largestAsset = assets.reduce((largest, asset) =>
+        (asset.size || 0) > (largest.size || 0) ? asset : largest,
         assets[0]
       );
 
@@ -540,37 +540,37 @@ export class AssetService {
    */
   getAssetDisplayInfo(asset: AssetFile): { icon: string; label: string; description: string } {
     const category = asset.category;
-    
+
     switch (category) {
       case 'image':
         return {
           icon: '🖼️',
           label: 'Image',
-          description: `${asset.name} (${this.formatFileSize(asset.size)})`
+          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
         };
       case 'video':
         return {
           icon: '🎬',
           label: 'Video',
-          description: `${asset.name} (${this.formatFileSize(asset.size)})`
+          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
         };
       case 'document':
         return {
           icon: '📄',
           label: 'Document',
-          description: `${asset.name} (${this.formatFileSize(asset.size)})`
+          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
         };
       case 'audio':
         return {
           icon: '🎵',
           label: 'Audio',
-          description: `${asset.name} (${this.formatFileSize(asset.size)})`
+          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
         };
       default:
         return {
           icon: '📎',
           label: 'File',
-          description: `${asset.name} (${this.formatFileSize(asset.size)})`
+          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
         };
     }
   }
@@ -604,12 +604,12 @@ export class AssetService {
    */
   getCategoryFromFileType(file: File): AssetFile['category'] {
     const type = file.type.toLowerCase();
-    
+
     if (type.startsWith('image/')) return 'image';
     if (type.startsWith('video/')) return 'video';
     if (type.startsWith('audio/')) return 'audio';
     if (type.includes('pdf') || type.includes('document') || type.includes('text/')) return 'document';
-    
+
     return 'other';
   }
 

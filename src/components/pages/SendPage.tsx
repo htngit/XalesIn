@@ -12,6 +12,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
@@ -118,10 +119,30 @@ function SendPageContent({
                 <p className="text-gray-600">{intl.formatMessage({ id: 'send.subtitle', defaultMessage: 'Configure and send WhatsApp messages to contact groups' })}</p>
               </div>
             </div>
-            <Button variant="outline" onClick={() => navigate('/groups')}>
-              <Settings className="h-4 w-4 mr-2" />
-              {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => navigate('/groups')}>
+                <Settings className="h-4 w-4 mr-2" />
+                {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline">Automation Sender</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Automation Sender</DialogTitle>
+                    <DialogDescription>
+                      This feature is currently under development.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="secondary">Close</Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

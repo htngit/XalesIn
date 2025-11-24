@@ -28,7 +28,8 @@ export class AuthService {
         name: profile?.name || user.email!.split('@')[0],
         role: profile?.role || 'owner',
         master_user_id: profile?.master_user_id || user.id,
-        created_at: user.created_at
+        created_at: user.created_at,
+        user_metadata: user.user_metadata
       };
 
       console.log('Login process completed successfully');
@@ -123,43 +124,63 @@ export class AuthService {
     }
   }
 
-  // Register new user
-  async register(email: string, password: string, name?: string): Promise<AuthResponse> {
-    try {
-      // Online mode: perform auth signup only - database triggers handle profile/quota creation
-      const { user, session } = await authHelpers.signUpWithEmail(email, password, {
-        name: name || email.split('@')[0]
-      });
+  // Register new user with retry logic
+  async register(email: string, password: string, name?: string, maxRetries = 3): Promise<AuthResponse> {
+    let lastError: any;
 
-      if (!user) {
-        throw new Error('No user returned from registration');
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Online mode: perform auth signup only - database triggers handle profile/quota creation AFTER email confirmation
+        const { user, session } = await authHelpers.signUpWithEmail(email, password, {
+          name: name || email.split('@')[0]
+        });
+
+        if (!user) {
+          throw new Error('No user returned from registration');
+        }
+
+        // Return minimal user data - profile will be created after email confirmation
+        const userData: User = {
+          id: user.id,
+          email: user.email!,
+          name: name || user.email!.split('@')[0],
+          role: 'owner', // Default role, will be set properly after email confirmation
+          master_user_id: user.id,
+          created_at: user.created_at,
+          user_metadata: user.user_metadata
+        };
+
+        return {
+          user: userData,
+          token: session?.access_token || '',
+          // Flag to indicate email confirmation is required
+          requiresEmailConfirmation: !user.email_confirmed_at
+        };
+      } catch (error: any) {
+        lastError = error;
+        const errorMessage = error.message?.toLowerCase() || '';
+
+        // Check if rate limit error - don't retry
+        if (errorMessage.includes('rate limit') || errorMessage.includes('too many')) {
+          throw new Error('Too many registration attempts. Please wait 5-10 minutes and try again.');
+        }
+
+        // Check if timeout and should retry
+        if ((errorMessage.includes('timeout') || errorMessage.includes('deadline')) && attempt < maxRetries - 1) {
+          console.warn(`Registration attempt ${attempt + 1} timed out, retrying in ${2 * (attempt + 1)}s...`);
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); // Backoff before retry
+          continue;
+        }
+
+        // Other errors or last attempt - throw
+        if (attempt === maxRetries - 1) {
+          console.error('Registration failed after', maxRetries, 'attempts:', error);
+          throw error;
+        }
       }
-
-      // Wait a moment for database triggers to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Get the profile created by database triggers
-      const profile = await this.getOrCreateProfile(user);
-
-      // Quota is not fetched here anymore, it will be fetched after PIN/Account selection
-
-      const userData: User = {
-        id: user.id,
-        email: user.email!,
-        name: profile?.name || name || user.email!.split('@')[0],
-        role: profile?.role || 'owner',
-        master_user_id: profile?.master_user_id || user.id,
-        created_at: user.created_at
-      };
-
-      return {
-        user: userData,
-        token: session?.access_token || ''
-      };
-    } catch (error) {
-      console.error('Registration error:', error);
-      throw error;
     }
+
+    throw lastError || new Error('Registration failed after multiple attempts');
   }
 
   // Validate token with Supabase
@@ -202,7 +223,8 @@ export class AuthService {
         name: profile?.name || user.email!.split('@')[0],
         role: profile?.role || 'owner',
         master_user_id: profile?.master_user_id || user.id,
-        created_at: user.created_at
+        created_at: user.created_at,
+        user_metadata: user.user_metadata
       };
 
       return userData;
@@ -214,7 +236,7 @@ export class AuthService {
 
   // Subscribe to auth state changes
   onAuthStateChange(callback: (user: User | null) => void) {
-    return supabase.auth.onAuthStateChange(async (event, session) => {
+    return supabase.auth.onAuthStateChange(async (_event, session) => {
       // UserProvider will handle the user state management automatically
       if (session?.user) {
         try {
@@ -253,7 +275,7 @@ export class AuthService {
    * Set current user context (for session management) - DEPRECATED
    * UserProvider now handles this automatically
    */
-  async setCurrentUser(user: User, sessionToken?: string): Promise<void> {
+  async setCurrentUser(_user: User, _sessionToken?: string): Promise<void> {
     // This method is deprecated - UserProvider handles context management automatically
     console.warn('setCurrentUser is deprecated - UserProvider handles context management automatically');
   }
@@ -309,7 +331,8 @@ export class AuthService {
         name: profile?.name || supabaseUser.email!.split('@')[0],
         role: profile?.role || 'owner',
         master_user_id: profile?.master_user_id || supabaseUser.id,
-        created_at: supabaseUser.created_at
+        created_at: supabaseUser.created_at,
+        user_metadata: supabaseUser.user_metadata
       };
 
       return userData;

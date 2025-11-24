@@ -24,12 +24,12 @@ export class QuotaService {
 
       // Check online status and prioritize accordingly
       const isOnline = await this.checkOnlineStatus();
-      
+
       if (isOnline) {
         try {
           // Use RPC function to check quota usage
           const quota = await rpcHelpers.checkQuotaUsage(userId);
-          
+
           if (!quota) {
             throw new Error('No quota data found for user');
           }
@@ -50,7 +50,7 @@ export class QuotaService {
           };
         } catch (onlineError) {
           console.warn('Online quota fetch failed, trying local:', onlineError);
-          
+
           // Try to get from local database
           const localQuota = await db.quotas.get(userId);
           if (localQuota) {
@@ -69,7 +69,7 @@ export class QuotaService {
               is_active: localQuota.is_active
             };
           }
-          
+
           // If no local data, throw the original error
           throw new Error(`Failed to fetch quota: ${handleDatabaseError(onlineError)}`);
         }
@@ -92,13 +92,13 @@ export class QuotaService {
             is_active: localQuota.is_active
           };
         }
-        
+
         // No local data available in offline mode
         throw new Error('No local quota data available and offline mode detected');
       }
     } catch (error) {
       console.error('Error fetching quota for user:', userId, error);
-      
+
       // Enhanced error handling
       if (error instanceof Error) {
         throw new Error(`Failed to fetch quota: ${error.message}`);
@@ -114,13 +114,13 @@ export class QuotaService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-      
+
       const response = await fetch('/api/ping', {
         method: 'HEAD',
         cache: 'no-cache',
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -152,14 +152,14 @@ export class QuotaService {
           },
           async (payload: any) => {
             console.log('Real-time quota update received:', payload);
-            
+
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
               const updatedQuota = payload.new;
-              
+
               try {
                 // Apply standardized timestamp handling to real-time updates
                 const standardizedQuota = standardizeForService(updatedQuota, 'quota');
-                
+
                 const quota: Quota = {
                   id: standardizedQuota.id,
                   user_id: standardizedQuota.user_id,
@@ -173,7 +173,7 @@ export class QuotaService {
                   created_at: standardizedQuota.created_at,
                   updated_at: standardizedQuota.updated_at
                 };
-                
+
                 callback(quota);
               } catch (error) {
                 console.error('Error processing quota update:', error);
@@ -230,7 +230,7 @@ export class QuotaService {
 
       // Use RPC function to reserve quota
       const result = await rpcHelpers.reserveQuota(userId, messageCount);
-      
+
       if (!result.success) {
         return {
           success: false,
@@ -246,7 +246,7 @@ export class QuotaService {
       };
     } catch (error) {
       console.error('Error reserving quota for user:', userId, error);
-      
+
       return {
         success: false,
         reservation_id: '',
@@ -272,7 +272,7 @@ export class QuotaService {
 
       // Use RPC function to commit quota usage
       const result = await rpcHelpers.commitQuotaUsage(reservationId, successCount);
-      
+
       if (!result.success) {
         throw new Error(result.error_message || 'Failed to commit quota usage');
       }
@@ -298,29 +298,24 @@ export class QuotaService {
       // Note: The database schema shows release_quota_reservation function
       // but since we're not tracking separate reservations currently,
       // this is a no-op. This can be enhanced in the future.
-      
+
       console.log('Quota reservation released (no-op for current implementation)');
     } catch (error) {
       console.error('Error releasing quota reservation:', error);
       throw new Error(`Failed to release quota: ${handleDatabaseError(error)}`);
     }
   }
-
   /**
    * Get current user ID from auth session
    */
   async getCurrentUserId(): Promise<string> {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      
-      if (error) {
-        throw error;
-      }
-      
+      const user = await userContextManager.getCurrentUser();
+
       if (!user) {
         throw new Error('User not authenticated');
       }
-      
+
       return user.id;
     } catch (error) {
       console.error('Error getting current user ID:', error);
@@ -356,19 +351,19 @@ export class QuotaService {
   }> {
     try {
       const quota = await this.getQuota(userId);
-      
-      const usagePercentage = quota.messages_limit > 0 
-        ? Math.round((quota.messages_used / quota.messages_limit) * 100) 
+
+      const usagePercentage = quota.messages_limit > 0
+        ? Math.round((quota.messages_used / quota.messages_limit) * 100)
         : 0;
-      
+
       // Use standardized timestamp handling for date calculations
       const now = new Date();
       const resetDate = fromISOString(quota.reset_date);
       const timeDifference = resetDate.getTime() - now.getTime();
       const daysUntilReset = Math.max(0, Math.ceil(timeDifference / (1000 * 3600 * 24)));
-      
+
       const canUpgrade = quota.plan_type === 'basic' || usagePercentage > 80;
-      
+
       return {
         usagePercentage,
         daysUntilReset,
@@ -422,7 +417,7 @@ export class QuotaService {
 
       // Apply standardized timestamp handling
       const standardizedQuota = standardizeForService(data, 'quota');
-      
+
       return {
         id: standardizedQuota.id,
         user_id: standardizedQuota.user_id,
@@ -490,7 +485,7 @@ export class QuotaService {
 
       // Apply standardized timestamp handling
       const standardizedQuota = standardizeForService(data, 'quota');
-      
+
       return {
         id: standardizedQuota.id,
         user_id: standardizedQuota.user_id,
@@ -647,7 +642,7 @@ export class QuotaService {
   async getLocalQuotaStatus(userId?: string): Promise<QuotaStatus> {
     try {
       const currentUserId = userId || await this.getCurrentUserId();
-      
+
       const quota = await this.getLocalQuotaData(currentUserId);
       if (!quota) {
         throw new Error('No local quota found for user');
@@ -700,10 +695,10 @@ export class QuotaService {
   async validateQuotaRequest(amount: number, userId?: string): Promise<boolean> {
     try {
       if (amount <= 0) return false;
-      
+
       const currentUserId = userId || await this.getCurrentUserId();
       const status = await this.getLocalQuotaStatus(currentUserId);
-      
+
       return status.messages_remaining >= amount;
     } catch (error) {
       console.error('Error validating quota request:', error);
@@ -717,7 +712,7 @@ export class QuotaService {
   async getReservationHistory(userId?: string): Promise<QuotaReservation[]> {
     try {
       const currentUserId = userId || await this.getCurrentUserId();
-      
+
       const reservations = await db.quotaReservations
         .where('user_id')
         .equals(currentUserId)
@@ -805,7 +800,7 @@ export class QuotaService {
     try {
       // Check if we're online first
       const online = await this.isOnline();
-      
+
       if (online) {
         // Try online first (original implementation)
         const onlineResult = await this.onlineReserveQuota(userId, messageCount);
@@ -822,7 +817,7 @@ export class QuotaService {
       }
     } catch (error) {
       console.error('Error in enhanced reserveQuota:', error);
-      
+
       // If online fails, try local as fallback
       try {
         const reservation = await this.localReserveQuota(userId, messageCount);
@@ -854,7 +849,7 @@ export class QuotaService {
     try {
       // Check if we're online and if reservation exists online
       const online = await this.isOnline();
-      
+
       if (online && !reservationId.startsWith('local_reservation_')) {
         // Try online first (original implementation)
         await this.onlineCommitQuota(reservationId, successCount);
@@ -870,7 +865,7 @@ export class QuotaService {
       }
     } catch (error) {
       console.error('Error in enhanced commitQuota:', error);
-      
+
       // If online fails, try local as fallback for local reservations
       if (reservationId.startsWith('local_reservation_')) {
         try {
@@ -888,7 +883,7 @@ export class QuotaService {
           };
         }
       }
-      
+
       return {
         success: false,
         error_message: `Failed to commit quota: ${handleDatabaseError(error)}`,

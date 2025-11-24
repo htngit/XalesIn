@@ -3,14 +3,14 @@ import { supabase, handleDatabaseError } from '../supabase';
 import { db, LocalGroup } from '../db';
 import { SyncManager } from '../sync/SyncManager';
 import { userContextManager } from '../security/UserContextManager';
-import { 
-  toISOString, 
-  fromISOString, 
-  supabaseToLocal, 
-  localToSupabase, 
-  addSyncMetadata, 
+import {
+  toISOString,
+  fromISOString,
+  supabaseToLocal,
+  localToSupabase,
+  addSyncMetadata,
   addTimestamps,
-  standardizeForService 
+  standardizeForService
 } from '../utils/timestamp';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -51,10 +51,10 @@ export class GroupService {
   async initialize(masterUserId: string) {
     this.masterUserId = masterUserId;
     this.syncManager.setMasterUserId(masterUserId);
-    
+
     // Start auto sync
     this.syncManager.startAutoSync();
-    
+
     // Initial sync with error handling
     try {
       await this.syncManager.triggerSync();
@@ -70,13 +70,13 @@ export class GroupService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-      
+
       const response = await fetch('/api/ping', {
         method: 'HEAD',
         cache: 'no-cache',
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -99,27 +99,13 @@ export class GroupService {
     }
   }
 
-  /**
-   * Get the current authenticated user
-   */
-  private async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
-      throw new Error('User not authenticated');
-    }
-    return user;
-  }
-
-  /**
-   * Get master user ID (for multi-tenant support)
-   */
   private async getMasterUserId(): Promise<string> {
     if (this.masterUserId) {
       return this.masterUserId;
     }
 
     const user = await this.getCurrentUser();
-    
+
     // Get user's profile to find master_user_id
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -160,12 +146,12 @@ export class GroupService {
       // If we have local data, return it immediately (offline-first approach)
       if (localGroups.length > 0) {
         const transformedGroups = this.transformLocalGroups(localGroups);
-        
+
         // If online, trigger background sync to update local data
         if (isOnline) {
           this.backgroundSyncGroups().catch(console.warn);
         }
-        
+
         return transformedGroups;
       }
 
@@ -174,7 +160,7 @@ export class GroupService {
         try {
           // Try to sync from server
           await this.syncManager.triggerSync();
-          
+
           // Try local again after sync
           localGroups = await db.groups
             .where('master_user_id')
@@ -188,7 +174,7 @@ export class GroupService {
         } catch (syncError) {
           console.warn('Sync failed, trying direct server fetch:', syncError);
         }
-        
+
         // Fallback to direct server fetch
         return await this.fetchGroupsFromServer();
       } else {
@@ -198,7 +184,7 @@ export class GroupService {
       }
     } catch (error) {
       console.error('Error fetching groups:', error);
-      
+
       // Enhanced error handling with offline fallback
       const isOnline = await this.checkOnlineStatus();
       if (!isOnline) {
@@ -210,17 +196,17 @@ export class GroupService {
             .equals(masterUserId)
             .and(group => !group._deleted && group.is_active !== false)
             .toArray();
-          
+
           if (localGroups.length > 0) {
             return this.transformLocalGroups(localGroups);
           }
         } catch (offlineError) {
           console.error('Even offline fallback failed:', offlineError);
         }
-        
+
         return [];
       }
-      
+
       // Online mode fallback to server
       try {
         return await this.fetchGroupsFromServer();
@@ -266,7 +252,7 @@ export class GroupService {
       .order('name');
 
     if (error) throw error;
-    
+
     // Transform server data with standardized timestamps
     return (data || []).map(group => {
       const standardized = standardizeForService(group, 'group');
@@ -286,7 +272,7 @@ export class GroupService {
 
       // Try local first
       const localGroup = await db.groups.get(id);
-      
+
       if (localGroup && !localGroup._deleted && localGroup.is_active !== false && localGroup.master_user_id === masterUserId) {
         const transformed = this.transformLocalGroups([localGroup]);
         return transformed[0] || null;
@@ -305,7 +291,7 @@ export class GroupService {
         if (error.code === 'PGRST116') return null; // No rows returned
         throw error;
       }
-      
+
       // Transform with standardized timestamps
       const standardized = standardizeForService(data, 'group');
       return {
@@ -382,7 +368,7 @@ export class GroupService {
 
       // Check if group exists locally
       const existingGroup = await db.groups.get(id);
-      
+
       if (!existingGroup || existingGroup._deleted) {
         // Group doesn't exist locally, try server
         const serverGroup = await this.getGroupById(id);
@@ -441,7 +427,7 @@ export class GroupService {
 
       // Check if group exists locally
       const existingGroup = await db.groups.get(id);
-      
+
       if (!existingGroup || existingGroup._deleted) {
         // Group doesn't exist locally, try server-side delete
         await this.deleteGroupFromServer(id);
@@ -499,7 +485,7 @@ export class GroupService {
 
       // Check if group exists locally
       const existingGroup = await db.groups.get(id);
-      
+
       if (existingGroup) {
         // Hard delete locally
         await db.groups.delete(id);
@@ -546,7 +532,7 @@ export class GroupService {
   private async enrichGroupsWithContactCounts(groups: ContactGroup[]): Promise<ContactGroup[]> {
     try {
       const masterUserId = await this.getMasterUserId();
-      
+
       // Get all contacts for this master user to calculate counts
       const contacts = await db.contacts
         .where('master_user_id')
@@ -556,7 +542,7 @@ export class GroupService {
 
       // Create a map of group IDs to contact counts
       const contactCountMap = new Map<string, number>();
-      
+
       contacts.forEach(contact => {
         const currentCount = contactCountMap.get(contact.group_id) || 0;
         contactCountMap.set(contact.group_id, currentCount + 1);
@@ -657,13 +643,13 @@ export class GroupService {
     try {
       const groups = await this.getGroupsWithContactCounts();
       const activeGroups = groups.filter(g => g.is_active !== false);
-      
+
       const totalContacts = activeGroups.reduce((sum, group) => sum + (group.contact_count || 0), 0);
-      const largestGroup = activeGroups.reduce((largest, group) => 
-        (group.contact_count || 0) > (largest.contact_count || 0) ? group : largest, 
+      const largestGroup = activeGroups.reduce((largest, group) =>
+        (group.contact_count || 0) > (largest.contact_count || 0) ? group : largest,
         activeGroups[0]
       );
-      const averageGroupSize = activeGroups.length > 0 
+      const averageGroupSize = activeGroups.length > 0
         ? Math.round(totalContacts / activeGroups.length)
         : 0;
 
@@ -684,7 +670,7 @@ export class GroupService {
    */
   subscribeToGroupUpdates(callback: (group: ContactGroup, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
     this.unsubscribeFromGroupUpdates();
-    
+
     this.realtimeChannel = supabase
       .channel('groups')
       .on(
@@ -696,7 +682,7 @@ export class GroupService {
         },
         async (payload) => {
           const { new: newRecord, old: oldRecord, eventType } = payload;
-          
+
           if (eventType === 'DELETE') {
             // Transform old record with standardized timestamps
             const transformedOld = standardizeForService(oldRecord, 'group');
@@ -716,7 +702,7 @@ export class GroupService {
    */
   subscribeToGroupUpdatesForMaster(masterUserId: string, callback: (group: ContactGroup, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
     this.unsubscribeFromGroupUpdates();
-    
+
     this.realtimeChannel = supabase
       .channel(`groups_${masterUserId}`)
       .on(
@@ -729,7 +715,7 @@ export class GroupService {
         },
         async (payload) => {
           const { new: newRecord, old: oldRecord, eventType } = payload;
-          
+
           if (eventType === 'DELETE') {
             // Transform old record with standardized timestamps
             const transformedOld = standardizeForService(oldRecord, 'group');
@@ -760,7 +746,7 @@ export class GroupService {
   async isGroupNameTaken(name: string, excludeId?: string): Promise<boolean> {
     try {
       const masterUserId = await this.getMasterUserId();
-      
+
       // Check local first
       const localGroups = await db.groups
         .where('master_user_id')
@@ -768,8 +754,8 @@ export class GroupService {
         .and(group => !group._deleted && group.is_active !== false)
         .toArray();
 
-      const localMatch = localGroups.find(group => 
-        group.name.toLowerCase() === name.toLowerCase() && 
+      const localMatch = localGroups.find(group =>
+        group.name.toLowerCase() === name.toLowerCase() &&
         group.id !== excludeId
       );
 
@@ -782,13 +768,13 @@ export class GroupService {
         .eq('master_user_id', masterUserId)
         .eq('name', name)
         .eq('is_active', true);
-         
+
       if (excludeId) {
         query = query.neq('id', excludeId);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
       return (data?.length || 0) > 0;
     } catch (error) {

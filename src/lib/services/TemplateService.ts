@@ -3,14 +3,14 @@ import { supabase, handleDatabaseError } from '../supabase';
 import { db, LocalTemplate } from '../db';
 import { SyncManager } from '../sync/SyncManager';
 import { userContextManager } from '../security/UserContextManager';
-import { 
-  toISOString, 
-  fromISOString, 
-  supabaseToLocal, 
-  localToSupabase, 
-  addSyncMetadata, 
+import {
+  toISOString,
+  fromISOString,
+  supabaseToLocal,
+  localToSupabase,
+  addSyncMetadata,
   addTimestamps,
-  standardizeForService 
+  standardizeForService
 } from '../utils/timestamp';
 
 export class TemplateService {
@@ -50,10 +50,10 @@ export class TemplateService {
   async initialize(masterUserId: string) {
     this.masterUserId = masterUserId;
     this.syncManager.setMasterUserId(masterUserId);
-    
+
     // Start auto sync
     this.syncManager.startAutoSync();
-    
+
     // Initial sync with error handling
     try {
       await this.syncManager.triggerSync();
@@ -69,13 +69,13 @@ export class TemplateService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-      
+
       const response = await fetch('/api/ping', {
         method: 'HEAD',
         cache: 'no-cache',
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -102,8 +102,8 @@ export class TemplateService {
    * Get the current authenticated user
    */
   private async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
+    const user = await userContextManager.getCurrentUser();
+    if (!user) {
       throw new Error('User not authenticated');
     }
     return user;
@@ -118,7 +118,7 @@ export class TemplateService {
     }
 
     const user = await this.getCurrentUser();
-    
+
     // Get user's profile to find master_user_id
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -184,12 +184,12 @@ export class TemplateService {
       // If we have local data, return it immediately (offline-first approach)
       if (localTemplates.length > 0) {
         const transformedTemplates = this.transformLocalTemplates(localTemplates);
-        
+
         // If online, trigger background sync to update local data
         if (isOnline) {
           this.backgroundSyncTemplates().catch(console.warn);
         }
-        
+
         return transformedTemplates;
       }
 
@@ -198,7 +198,7 @@ export class TemplateService {
         try {
           // Try to sync from server
           await this.syncManager.triggerSync();
-          
+
           // Try local again after sync
           localTemplates = await db.templates
             .where('master_user_id')
@@ -212,7 +212,7 @@ export class TemplateService {
         } catch (syncError) {
           console.warn('Sync failed, trying direct server fetch:', syncError);
         }
-        
+
         // Fallback to direct server fetch
         return await this.fetchTemplatesFromServer();
       } else {
@@ -222,7 +222,7 @@ export class TemplateService {
       }
     } catch (error) {
       console.error('Error fetching templates:', error);
-      
+
       // Enhanced error handling with offline fallback
       const isOnline = await this.checkOnlineStatus();
       if (!isOnline) {
@@ -234,17 +234,17 @@ export class TemplateService {
             .equals(masterUserId)
             .and(template => !template._deleted)
             .toArray();
-          
+
           if (localTemplates.length > 0) {
             return this.transformLocalTemplates(localTemplates);
           }
         } catch (offlineError) {
           console.error('Even offline fallback failed:', offlineError);
         }
-        
+
         return [];
       }
-      
+
       // Online mode fallback to server
       try {
         return await this.fetchTemplatesFromServer();
@@ -310,7 +310,7 @@ export class TemplateService {
 
       // Try local first
       const localTemplate = await db.templates.get(id);
-      
+
       if (localTemplate && !localTemplate._deleted && localTemplate.master_user_id === masterUserId) {
         const transformed = this.transformLocalTemplates([localTemplate]);
         return transformed[0] || null;
@@ -453,7 +453,7 @@ export class TemplateService {
 
       // Check if template exists locally
       const existingTemplate = await db.templates.get(id);
-      
+
       if (!existingTemplate || existingTemplate._deleted) {
         // Template doesn't exist locally, try server
         const serverTemplate = await this.getTemplateById(id);
@@ -526,7 +526,7 @@ export class TemplateService {
 
       // Check if template exists locally
       const existingTemplate = await db.templates.get(id);
-      
+
       if (!existingTemplate || existingTemplate._deleted) {
         // Template doesn't exist locally, try server-side delete
         await this.deleteTemplateFromServer(id);
@@ -563,9 +563,9 @@ export class TemplateService {
 
     const { error } = await supabase
       .from('templates')
-      .update({ 
-        is_active: false, 
-        updated_at: toISOString(new Date()) 
+      .update({
+        is_active: false,
+        updated_at: toISOString(new Date())
       })
       .eq('id', id)
       .eq('master_user_id', masterUserId);
@@ -585,7 +585,7 @@ export class TemplateService {
     if (!template.variants || template.variants.length === 0) {
       return '';
     }
-    
+
     const randomIndex = Math.floor(Math.random() * template.variants.length);
     return template.variants[randomIndex];
   }
@@ -604,7 +604,7 @@ export class TemplateService {
     }
 
     let randomIndex: number;
-    
+
     // Ensure we don't get the same variant consecutively
     do {
       randomIndex = Math.floor(Math.random() * template.variants.length);
@@ -623,7 +623,7 @@ export class TemplateService {
     const allVariables = variants
       .flatMap(variant => this.extractVariables(variant))
       .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
-    
+
     return allVariables;
   }
 

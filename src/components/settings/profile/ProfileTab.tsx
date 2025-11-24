@@ -7,6 +7,7 @@ import { PasswordChangeForm } from './PasswordChangeForm';
 import { supabase } from '@/lib/supabase';
 import { Loader2, Edit, Save, X, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { userContextManager } from '@/lib/security/UserContextManager';
 
 export function ProfileTab() {
     const [user, setUser] = useState<any>(null);
@@ -25,7 +26,7 @@ export function ProfileTab() {
 
     const fetchUserProfile = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = await userContextManager.getCurrentUser();
             if (user) {
                 setUser(user);
                 setFormData({

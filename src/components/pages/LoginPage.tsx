@@ -97,11 +97,29 @@ export function LoginPage({ onLoginSuccess, initialView = 'login' }: LoginPagePr
 
     try {
       const response = await authService.register(email, password, name);
-      toast({
-        title: intl.formatMessage({ id: 'common.status.success', defaultMessage: 'Success!' }),
-        description: intl.formatMessage({ id: 'auth.register.success', defaultMessage: 'Account created successfully' })
-      });
-      onLoginSuccess(response);
+
+      // Check if email confirmation is required
+      if (response.requiresEmailConfirmation) {
+        toast({
+          title: intl.formatMessage({ id: 'common.status.success', defaultMessage: 'Success!' }),
+          description: intl.formatMessage({
+            id: 'auth.register.check_email',
+            defaultMessage: 'Registration successful! Please check your email to confirm your account.'
+          })
+        });
+
+        // Switch to login tab after 2 seconds
+        setTimeout(() => {
+          handleViewChange('login');
+        }, 2000);
+      } else {
+        // Email already confirmed (shouldn't happen in normal flow)
+        toast({
+          title: intl.formatMessage({ id: 'common.status.success', defaultMessage: 'Success!' }),
+          description: intl.formatMessage({ id: 'auth.register.success', defaultMessage: 'Account created successfully' })
+        });
+        onLoginSuccess(response);
+      }
     } catch (err: any) {
       const errorMessage = err.message?.toLowerCase() || '';
       console.error('Registration failed:', err.message);

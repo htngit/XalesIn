@@ -8,6 +8,7 @@ export interface User {
   role: 'owner' | 'staff';
   master_user_id: string;
   created_at: string;
+  user_metadata?: any;
 }
 
 export interface Quota {
@@ -45,6 +46,19 @@ export interface QuotaStatus {
   reset_date: string;
   active_reservations: number;
   reserved_amount: number;
+}
+
+export interface ReservationResult {
+  success: boolean;
+  reservationId: string;
+  messagesRemaining: number;
+  errorMessage?: string;
+}
+
+export interface CommitResult {
+  success: boolean;
+  messagesUsed: number;
+  messagesRemaining: number;
 }
 
 export interface ContactGroup {
@@ -176,6 +190,7 @@ export interface AuthResponse {
   user: User;
   token: string;
   quota?: Quota;
+  requiresEmailConfirmation?: boolean;
 }
 
 export interface PINValidation {

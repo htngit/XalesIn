@@ -108,8 +108,8 @@ export class ContactService {
    * Get the current authenticated user
    */
   private async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
+    const user = await userContextManager.getCurrentUser();
+    if (!user) {
       throw new Error('User not authenticated');
     }
     return user;

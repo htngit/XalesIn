@@ -1,5 +1,6 @@
 import { db, SyncOperation } from '../db';
 import { supabase } from '../supabase';
+import { userContextManager } from '../security/UserContextManager';
 import {
   fromISOString,
   isValidTimestamp,
@@ -491,16 +492,10 @@ export class SyncManager {
     this.setStatus(SyncStatus.SYNCING, 'Starting sync');
 
     try {
-      // Verify authentication with timeout
-      const authPromise = supabase.auth.getUser();
-      const authTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Authentication timeout')), this.currentConfig.connectionTimeout)
-      );
+      // Use UserContextManager for in-memory auth check (no API call)
+      const user = await userContextManager.getCurrentUser();
 
-      const authResult = await Promise.race([authPromise, authTimeout]);
-      const { data: { user }, error: authError } = authResult as any;
-
-      if (authError || !user) {
+      if (!user) {
         console.warn('Sync skipped: User not authenticated');
         this.setStatus(SyncStatus.IDLE, 'Waiting for authentication');
         return;

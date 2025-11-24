@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Subscription, PricingPlan, PaymentTransaction, PlanType } from '@/types/subscription';
+import { userContextManager } from '@/lib/security/UserContextManager';
 
 export interface UserQuota {
     user_id: string;
@@ -11,7 +12,7 @@ export interface UserQuota {
 
 export const subscriptionService = {
     async getCurrentSubscription(): Promise<Subscription | null> {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await userContextManager.getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase
@@ -42,7 +43,7 @@ export const subscriptionService = {
     },
 
     async getPaymentHistory(): Promise<PaymentTransaction[]> {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await userContextManager.getCurrentUser();
         if (!user) return [];
 
         const { data, error } = await supabase
@@ -59,7 +60,7 @@ export const subscriptionService = {
     },
 
     async getUserQuota(): Promise<UserQuota | null> {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await userContextManager.getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase
