@@ -575,8 +575,12 @@ export class AssetService {
       if (!existingAsset) {
         // Try server-side deletion if not found locally
         await this.deleteAssetFromServer(id);
+        console.log(`AssetService: Asset ${id} not found locally, attempted server-side deletion`);
         return true;
       }
+
+      // Log asset deletion to console with metadata
+      console.log(`AssetService: Asset deleted locally with metadata - ID: ${id}, Name: ${existingAsset.name}, Type: ${existingAsset.file_type}, Size: ${existingAsset.file_size} bytes, Category: ${existingAsset.category}. Waiting to sync delete on cloud.`);
 
       // Use standardized sync metadata for soft delete
       const syncMetadata = addSyncMetadata(existingAsset, true);
