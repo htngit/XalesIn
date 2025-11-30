@@ -487,7 +487,7 @@ function SendPageContent({
                       <div className="flex justify-between">
                         <span className="text-sm">{intl.formatMessage({ id: 'send.quota.remaining', defaultMessage: 'Remaining:' })}</span>
                         <Badge variant={quota.remaining >= targetContacts.length ? 'default' : 'destructive'}>
-                          {quota.remaining}
+                          {quota.plan_type === 'pro' ? '∞' : quota.remaining}
                         </Badge>
                       </div>
                       <div className="flex justify-between">

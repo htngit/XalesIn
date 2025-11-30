@@ -355,7 +355,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       <div className="flex flex-1 relative h-screen overflow-hidden">
         {/* Sidebar */}
         <aside className={`
-            h-screen overflow-hidden fixed lg:static inset-y-0 left-0 z-10 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out
+            h-screen overflow-hidden fixed inset-y-0 left-0 z-10 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           `}>
           <div className="h-full flex flex-col">
@@ -413,7 +413,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50/50">
+        <main className="flex-1 overflow-y-auto bg-gray-50/50 lg:ml-64">
           <div className="max-w-7xl mx-auto p-4 lg:p-8 space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

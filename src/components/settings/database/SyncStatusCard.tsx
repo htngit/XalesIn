@@ -80,7 +80,7 @@ export function SyncStatusCard({ lastSyncTime, syncStatus, onManualSync }: SyncS
                     <div>
                         <CardTitle>Sync Status</CardTitle>
                         <CardDescription>
-                            Synchronization between local database and Supabase
+                            Synchronization between local database and Cloud
                         </CardDescription>
                     </div>
                     {getStatusBadge()}
@@ -113,7 +113,7 @@ export function SyncStatusCard({ lastSyncTime, syncStatus, onManualSync }: SyncS
 
                 <div className="text-xs text-muted-foreground">
                     <p>• Auto-sync runs every 5 minutes when online</p>
-                    <p>• Manual sync updates all data from Supabase</p>
+                    <p>• Manual sync updates all data from Cloud</p>
                 </div>
             </CardContent>
         </Card>
