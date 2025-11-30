@@ -449,6 +449,7 @@ export function validateData<T>(data: any, type: 'contact' | 'group' | 'template
       return validateTemplate(data) as T;
     case 'activityLog':
     case 'activity_logs':
+    case 'activityLogs':
       return validateActivityLog(data) as T;
     case 'assetFile':
     case 'assets':

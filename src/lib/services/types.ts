@@ -129,6 +129,7 @@ export interface AssetFile {
   file_type: string;
   file_url: string;
   uploaded_by: string;
+  master_user_id: string;
   category: 'image' | 'video' | 'audio' | 'document' | 'other';
   mime_type?: string;
   is_public: boolean;

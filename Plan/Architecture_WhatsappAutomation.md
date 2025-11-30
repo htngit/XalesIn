@@ -23,13 +23,13 @@ Supabase handles **authentication**, **metadata**, **quota control**, **activity
 ## 2. Full Technical Stack
 
 ### Desktop App (Electron Client)
-- **Electron** – Main process (Node.js runtime)  
-- **React (Vite + TypeScript)** – Renderer UI  
-- **Preload.js** – Secure IPC bridge (limited API surface)  
-- **Dexie** – Local IndexedDB (contacts, templates, WAL, assets)  
-- **Keytar** – Secure JWT & local secrets storage  
-- **whatsapp-web.js + Puppeteer** – Local WhatsApp session runtime  
-- **Sharp** – Image compression before upload  
+- **Electron** – Main process (Node.js runtime)
+- **React (Vite + TypeScript)** – Renderer UI
+- **Preload.js** – Secure IPC bridge (limited API surface)
+- **Dexie** – Local IndexedDB (contacts, templates, WAL, assets)
+- **whatsapp-web.js + Puppeteer** – Local WhatsApp session runtime
+- **Sharp** – Image compression before upload
+- **Keytar** – Secure JWT & local secrets storage (Future Development)
 
 ### Frontend (Renderer Layer)
 - **Vite** – Build tool (HMR, fast dev server)  
@@ -92,8 +92,8 @@ npx shadcn-ui@latest add animated-button animated-card  # dari Animate UI regist
 ## 4. Core Execution Flow
 
 ### 🔹 Authentication
-1. Login via Supabase Auth → Store JWT in **Keytar**  
-2. Fetch metadata (`quota`, `plan`) → **50% sync rule**  
+1. Login via Supabase Auth → Store JWT in **Dexie** (Keytar for Future Development)
+2. Fetch metadata (`quota`, `plan`) → **50% sync rule**
 3. Show **Local PIN modal** (Owner/Staff)
 
 ### 🔹 Dual Sync System
@@ -179,9 +179,10 @@ All local data scoped by `master_user_id`:
 5. ✅ **Zero unverified UI libraries** (no AEVR, no Magic UI)  
 6. ✅ **Per-user data isolation**  
 7. ✅ **Uninstall cleanup enforced**  
-8. ✅ **RPC = single source of truth untuk quota**  
-9. ✅ **Edge Functions = secure payment processing**  
+8. ✅ **RPC = single source of truth untuk quota**
+9. ✅ **Edge Functions = secure payment processing**
 10. ✅ **Phase 3 = hard stop** → arsitektur baru untuk produk berikutnya
+11. ⚠️ **Keytar implementation** = Future Development (not Phase 3)
 
 ---
 

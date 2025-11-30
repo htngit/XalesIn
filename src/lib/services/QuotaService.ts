@@ -79,7 +79,7 @@ export class QuotaService {
 
     // Cache reservation
     try {
-      const masterUserId = await userContextManager.getCurrentUserId();
+      const masterUserId = await userContextManager.getCurrentMasterUserId();
       if (masterUserId) {
         await db.quotaReservations.add({
           id: result.reservation_id,
@@ -107,6 +107,11 @@ export class QuotaService {
    * Architecture: "Commit → update quota + logs"
    */
   async commitQuota(reservationId: string, successCount: number) {
+    if (successCount <= 0) {
+      console.log('[QuotaService] successCount is 0, releasing reservation instead of committing.');
+      await this.releaseQuota(reservationId);
+      return;
+    }
     try {
       // Try Supabase RPC first
       await this.onlineCommitQuota(reservationId, successCount);
@@ -146,6 +151,7 @@ export class QuotaService {
       });
     }
   }
+
   /**
    * Get quota information for a user using RPC function
    * Enforces data isolation using UserContextManager
@@ -241,7 +247,6 @@ export class QuotaService {
       throw new Error('Failed to fetch quota: Unknown error');
     }
   }
-
 
   /**
    * Subscribe to real-time quota updates using Supabase realtime
@@ -409,11 +414,14 @@ export class QuotaService {
 
       console.log('Releasing quota reservation:', reservationId);
 
-      // Note: The database schema shows release_quota_reservation function
-      // but since we're not tracking separate reservations currently,
-      // this is a no-op. This can be enhanced in the future.
+      // Update local reservation to cancelled so it doesn't block quota
+      await db.quotaReservations.update(reservationId, {
+        status: 'cancelled',
+        updated_at: nowISO(),
+        _syncStatus: 'pending'
+      });
 
-      console.log('Quota reservation released (no-op for current implementation)');
+      console.log('Quota reservation released locally');
     } catch (error) {
       console.error('Error releasing quota reservation:', error);
       throw new Error(`Failed to release quota: ${handleDatabaseError(error)}`);

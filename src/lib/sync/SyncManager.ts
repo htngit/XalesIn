@@ -1,5 +1,5 @@
 import { db, SyncOperation } from '../db';
-import { supabase } from '../supabase';
+import { supabase, rpcHelpers } from '../supabase';
 import { userContextManager } from '../security/UserContextManager';
 import {
   fromISOString,
@@ -824,26 +824,28 @@ export class SyncManager {
       });
     }
 
-    // Use upsert for assets to handle potential duplicates from race conditions
-    if (table === 'assets') {
-      const { error } = await supabase
-        .from(supabaseTable)
-        .upsert(serverData, { onConflict: 'id' });
+    // Use upsert for all tables to handle potential duplicates from race conditions or retries
+    const { error } = await supabase
+      .from(supabaseTable)
+      .upsert(serverData, { onConflict: 'id' });
 
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from(supabaseTable)
-        .insert(serverData);
-
-      if (error) throw error;
-    }
+    if (error) throw error;
   }
 
   /**
    * Push update operation to server
    */
   private async pushUpdate(table: string, recordId: string, data: any): Promise<void> {
+    // Handle special RPC actions for quotas
+    if (table === 'quotas' && data.action === 'commit_quota') {
+      console.log('SyncManager: Executing commit_quota RPC', data);
+      const result = await rpcHelpers.commitQuotaUsage(data.reservation_id, data.success_count);
+      if (!result.success) {
+        throw new Error(result.error_message || 'Failed to commit quota usage via sync');
+      }
+      return;
+    }
+
     const supabaseTable = this.mapTableName(table);
 
     // Remove sync metadata before sending to server

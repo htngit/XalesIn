@@ -1,1 +1,61 @@
-"use strict";const n=require("electron");n.contextBridge.exposeInMainWorld("electron",{whatsapp:{connect:()=>n.ipcRenderer.invoke("whatsapp:connect"),disconnect:()=>n.ipcRenderer.invoke("whatsapp:disconnect"),sendMessage:(s,e,t)=>n.ipcRenderer.invoke("whatsapp:send-message",{to:s,content:e,assets:t}),getStatus:()=>n.ipcRenderer.invoke("whatsapp:get-status"),onQRCode:s=>{const e=(t,r)=>s(r);return n.ipcRenderer.on("whatsapp:qr-code",e),()=>n.ipcRenderer.removeListener("whatsapp:qr-code",e)},onStatusChange:s=>{const e=(t,r)=>s(r);return n.ipcRenderer.on("whatsapp:status-change",e),()=>n.ipcRenderer.removeListener("whatsapp:status-change",e)},onMessageReceived:s=>{const e=(t,r)=>s(r);return n.ipcRenderer.on("whatsapp:message-received",e),()=>n.ipcRenderer.removeListener("whatsapp:message-received",e)},onUnsubscribeDetected:s=>{const e=(t,r)=>s(r);return n.ipcRenderer.on("whatsapp:unsubscribe-detected",e),()=>n.ipcRenderer.removeListener("whatsapp:unsubscribe-detected",e)}}});
+"use strict";
+const electron = require("electron");
+electron.contextBridge.exposeInMainWorld("electron", {
+  whatsapp: {
+    // Connection methods
+    connect: () => electron.ipcRenderer.invoke("whatsapp:connect"),
+    disconnect: () => electron.ipcRenderer.invoke("whatsapp:disconnect"),
+    // Messaging methods
+    sendMessage: (to, content, assets) => electron.ipcRenderer.invoke("whatsapp:send-message", { to, content, assets }),
+    // Status methods
+    getStatus: () => electron.ipcRenderer.invoke("whatsapp:get-status"),
+    getClientInfo: () => electron.ipcRenderer.invoke("whatsapp:get-client-info"),
+    // Job processing methods (for Week 3)
+    processJob: (jobId, contacts, template, assets) => electron.ipcRenderer.invoke("whatsapp:process-job", { jobId, contacts, template, assets }),
+    pauseJob: (jobId) => electron.ipcRenderer.invoke("whatsapp:pause-job", { jobId }),
+    resumeJob: (jobId) => electron.ipcRenderer.invoke("whatsapp:resume-job", { jobId }),
+    // Event listeners
+    onQRCode: (callback) => {
+      const subscription = (_event, qr) => callback(qr);
+      electron.ipcRenderer.on("whatsapp:qr-code", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:qr-code", subscription);
+      };
+    },
+    onStatusChange: (callback) => {
+      const subscription = (_event, status) => callback(status);
+      electron.ipcRenderer.on("whatsapp:status-change", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:status-change", subscription);
+      };
+    },
+    onMessageReceived: (callback) => {
+      const subscription = (_event, data) => callback(data);
+      electron.ipcRenderer.on("whatsapp:message-received", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:message-received", subscription);
+      };
+    },
+    onError: (callback) => {
+      const subscription = (_event, error) => callback(error);
+      electron.ipcRenderer.on("whatsapp:error", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:error", subscription);
+      };
+    },
+    onJobProgress: (callback) => {
+      const subscription = (_event, progress) => callback(progress);
+      electron.ipcRenderer.on("whatsapp:job-progress", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:job-progress", subscription);
+      };
+    },
+    onJobErrorDetail: (callback) => {
+      const subscription = (_event, errorDetail) => callback(errorDetail);
+      electron.ipcRenderer.on("whatsapp:job-error-detail", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:job-error-detail", subscription);
+      };
+    }
+  }
+});

@@ -13,6 +13,7 @@ import { FirstTimeUserService } from '@/lib/services/FirstTimeUserService';
 import { InitialSyncOrchestrator, SyncProgress } from '@/lib/services/InitialSyncOrchestrator';
 import { InitialSyncScreen } from '../ui/InitialSyncScreen';
 import { Skeleton } from '../ui/skeleton';
+import { WhatsAppConnectionStatus } from '../ui/WhatsAppConnectionStatus';
 import {
   BarChart3,
   Users,
@@ -204,7 +205,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       paymentSubscriptionRef.current.unsubscribe();
     }
     try {
-      const sub = await paymentService.subscribeToPaymentUpdates('all', (payment) => {
+      const sub = await paymentService.subscribeToPaymentUpdates('all', (payment: any) => {
         if (payment.status === 'completed' && quota?.user_id) {
           // Refresh quota after successful payment
           quotaService.getQuota(quota.user_id).then((newQuota) => {
@@ -422,6 +423,11 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 <p className="text-muted-foreground">
                   <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back! Here's what's happening with your campaigns." />
                 </p>
+              </div>
+
+              {/* WhatsApp Connection Status */}
+              <div className="flex items-center">
+                <WhatsAppConnectionStatus />
               </div>
             </div>
 

@@ -101,6 +101,8 @@
     "settings.tab.notifications": "Notifications",
     "settings.tab.security": "Security",
     "settings.coming_soon": "Coming soon...",
+    "send.mode.static": "Static",
+    "send.mode.dynamic": "Dynamic",
     "contacts.title": "Contacts",
     "contacts.subtitle": "Manage your WhatsApp contacts organized by groups",
     "contacts.button.manage_groups": "Manage Groups",

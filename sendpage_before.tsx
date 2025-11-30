@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
@@ -19,8 +19,6 @@ import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { FadeIn } from '@/components/ui/animations';
 import { Contact, Template, Quota, ContactGroup, AssetFile, MessageLog } from '@/lib/services/types';
-import { JobProgressModal } from '@/components/ui/JobProgressModal';
-import { toast } from 'sonner';
 import {
   Send,
   MessageSquare,
@@ -65,7 +63,7 @@ function SendPageContent({
   setSendingMode,
   isSending,
   sendResult,
-  handleStartCampaign,
+  simulateSend,
   targetContacts,
   selectedTemplateData,
   selectedGroupData,
@@ -74,10 +72,7 @@ function SendPageContent({
   getSelectedAssets,
   toggleAssetSelection,
   getAssetIcon,
-  formatFileSize,
-  showProgressModal,
-  setShowProgressModal,
-  activeJobId
+  formatFileSize
 }: {
   contacts: Contact[];
   templates: Template[];
@@ -95,7 +90,7 @@ function SendPageContent({
   setSendingMode: (mode: 'static' | 'dynamic') => void;
   isSending: boolean;
   sendResult: any;
-  handleStartCampaign: () => void;
+  simulateSend: () => void;
   targetContacts: Contact[];
   selectedTemplateData: Template | undefined;
   selectedGroupData: ContactGroup | { name: string; color: string };
@@ -105,9 +100,6 @@ function SendPageContent({
   toggleAssetSelection: (assetId: string) => void;
   getAssetIcon: (category: AssetFile['category']) => React.ComponentType<any>;
   formatFileSize: (bytes: number) => string;
-  showProgressModal: boolean;
-  setShowProgressModal: (show: boolean) => void;
-  activeJobId: string | null;
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
@@ -133,6 +125,24 @@ function SendPageContent({
                 <Settings className="h-4 w-4 mr-2" />
                 {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
               </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline">Automation Sender</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Automation Sender</DialogTitle>
+                    <DialogDescription>
+                      This feature is currently under development.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="secondary">Close</Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 
@@ -515,7 +525,7 @@ function SendPageContent({
                     animation="scale"
                     className="w-full"
                     size="lg"
-                    onClick={handleStartCampaign}
+                    onClick={simulateSend}
                     disabled={!canSend || isSending}
                   >
                     {isSending ? (
@@ -601,15 +611,6 @@ function SendPageContent({
           </div>
         </FadeIn>
       </div>
-
-      {/* Job Progress Modal */}
-      {activeJobId && (
-        <JobProgressModal
-          jobId={activeJobId}
-          open={showProgressModal}
-          onClose={() => setShowProgressModal(false)}
-        />
-      )}
     </div>
   );
 }
@@ -639,9 +640,6 @@ export function SendPage({ userName }: { userName: string }) {
   const [sendResult, setSendResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showProgressModal, setShowProgressModal] = useState(false);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [reservationId, setReservationId] = useState<string | null>(null);
   const intl = useIntl();
 
   const loadData = async () => {
@@ -724,7 +722,7 @@ export function SendPage({ userName }: { userName: string }) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const handleStartCampaign = async () => {
+  const simulateSend = async () => {
     if (!selectedTemplate || !quota) return;
 
     const targetContacts = getTargetContacts();
@@ -737,27 +735,20 @@ export function SendPage({ userName }: { userName: string }) {
     setSendResult(null);
 
     try {
-      // 1. Check WhatsApp Connection
-      const status = await window.electron.whatsapp.getStatus();
-      if (!status.ready) {
-        throw new Error('WhatsApp is not connected. Please connect in Dashboard first.');
-      }
-
       // Get current user ID
       const currentUserId = await userContextManager.getCurrentMasterUserId();
       if (!currentUserId) {
         throw new Error('User not authenticated');
       }
 
-      // 2. Reserve quota
+      // Step 1: Reserve quota
       const reserveResult = await quotaService.reserveQuota(currentUserId, targetContacts.length);
 
       if (!reserveResult.success) {
         throw new Error('Failed to reserve quota');
       }
-      setReservationId(reserveResult.reservation_id);
 
-      // 3. Create job in WAL
+      // Step 2: Create job in WAL (Architecture: "Persist to Dexie WAL")
       const jobId = crypto.randomUUID();
       await db.messageJobs.add({
         id: jobId,
@@ -772,8 +763,8 @@ export function SendPage({ userName }: { userName: string }) {
         status: 'pending',
         config: {
           sendingMode,
-          delayRange: sendingMode === 'static' ? delayRange[0] : delayRange
-        } as any,
+          delayRange
+        },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         _syncStatus: 'pending',
@@ -781,39 +772,102 @@ export function SendPage({ userName }: { userName: string }) {
         _version: 1
       });
 
-      // 4. Call IPC to start processing
-      // Note: We need to pass asset paths. If AssetFile has path/url, use it.
-      // If assets are stored in Supabase Storage, we might need to download them first or pass the URL.
-      // For Phase 3, let's assume local paths or public URLs are sufficient if available.
-      // If AssetFile doesn't have a local path, we might need to handle that.
-      // Checking AssetFile type... it usually has 'url' or 'file_path'.
-      // For now, let's pass the 'url' if available.
-      const assetPaths = getSelectedAssets().map(a => a.url).filter(Boolean) as string[];
+      // Step 3: Simulate sending process
+      // BACKEND IMPLEMENTATION NOTE:
+      // When implementing the actual sending logic in the backend (WhatsApp Web JS):
+      //
+      // 1. Static Mode (sendingMode === 'static'):
+      //    - Use a fixed delay between each message.
+      //    - Delay = delayRange[0] (in seconds).
+      //    - Example: sleep(delayRange[0] * 1000)
+      //
+      // 2. Dynamic Mode (sendingMode === 'dynamic'):
+      //    - Use a random delay for each message within the specified range.
+      //    - Range = [delayRange[0], delayRange[1]] (in seconds).
+      //    - Logic: randomDelay = Math.floor(Math.random() * (max - min + 1)) + min
+      //    - Example: sleep(randomDelay * 1000)
+      //
+      // 3. Queue Management:
+      //    - Ensure the queue respects these delays to avoid banning.
+      //    - Handle "429 Too Many Requests" by pausing and increasing delay temporarily.
 
-      const result = await window.electron.whatsapp.processJob(
-        jobId,
-        targetContacts,
-        selectedTemplateData,
-        assetPaths
-      );
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to start campaign');
-      }
+      // Step 3: Generate mock results
+      const successCount = Math.floor(targetContacts.length * 0.9); // 90% success rate
+      const failedCount = targetContacts.length - successCount;
 
-      // 5. Open Progress Modal
-      setActiveJobId(jobId);
-      setShowProgressModal(true);
-      toast.success('Campaign started successfully');
+      // Step 4: Commit quota usage
+      await quotaService.commitQuota(reserveResult.reservation_id, successCount);
+
+      // Step 5: Update job status
+      await db.messageJobs.update(jobId, {
+        status: 'completed',
+        success_count: successCount,
+        failed_count: failedCount,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      // Step 6: Create Activity Log with Message Logs
+      const messageLogs: MessageLog[] = targetContacts.map((contact, index) => {
+        const isSuccess = index < successCount;
+        return {
+          id: crypto.randomUUID(),
+          activity_log_id: '', // Placeholder, will be part of the parent log
+          contact_id: contact.id,
+          contact_name: contact.name,
+          contact_phone: contact.phone,
+          status: isSuccess ? 'sent' : 'failed',
+          sent_at: new Date().toISOString(),
+          error_message: isSuccess ? undefined : 'Failed to deliver message'
+        };
+      });
+
+      await historyService.createLog({
+        user_id: currentUserId,
+        master_user_id: currentUserId,
+        contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+        template_id: selectedTemplate,
+        template_name: selectedTemplateData.name,
+        total_contacts: targetContacts.length,
+        success_count: successCount,
+        failed_count: failedCount,
+        status: 'completed',
+        delay_range: delayRange[0],
+        metadata: {
+          logs: messageLogs
+        }
+      });
+
+      // Step 6: Update local quota
+      const updatedQuota = {
+        ...quota,
+        messages_used: quota.messages_used + successCount,
+        remaining: quota.remaining - successCount
+      };
+      setQuota(updatedQuota);
+
+      setSendResult({
+        success: true,
+        totalContacts: targetContacts.length,
+        successCount,
+        failedCount,
+        templateName: selectedTemplateData.name,
+        groupName: selectedGroupData.name,
+        selectedAssets: getSelectedAssets(),
+        sendingMode,
+        delayRange: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}`,
+        reservationId: reserveResult.reservation_id
+      });
 
     } catch (error) {
-      console.error('Campaign start failed:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to start campaign');
-      setIsSending(false);
       setSendResult({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       });
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -842,106 +896,6 @@ export function SendPage({ userName }: { userName: string }) {
 
     return preview;
   };
-
-  // Listen for job errors
-  useEffect(() => {
-    if (!activeJobId) return;
-
-    const unsubscribe = window.electron.whatsapp.onJobErrorDetail((data) => {
-      if (data.jobId === activeJobId) {
-        console.error('Job Error Detail:', data);
-        toast.error(`Failed to send to ${data.phone}: ${data.error}`);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [activeJobId]);
-
-  // Listen for job completion
-  useEffect(() => {
-    if (!activeJobId) return;
-
-    const unsubscribe = window.electron.whatsapp.onJobProgress(async (data) => {
-      if (data.jobId === activeJobId && data.status === 'completed') {
-        try {
-          const currentUserId = await userContextManager.getCurrentMasterUserId();
-          if (!currentUserId) return;
-
-          const targetContacts = getTargetContacts();
-          const selectedTemplateData = getSelectedTemplate();
-          const selectedGroupData = getSelectedGroup();
-
-          // Commit quota
-          if (reservationId) {
-            await quotaService.commitQuota(reservationId, data.success);
-          }
-
-          // Update job status
-          await db.messageJobs.update(activeJobId, {
-            status: 'completed',
-            success_count: data.success,
-            failed_count: data.failed,
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-          // Create History Log
-          await historyService.createLog({
-            user_id: currentUserId,
-            master_user_id: currentUserId,
-            contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
-            template_id: selectedTemplate,
-            template_name: selectedTemplateData?.name || 'Unknown Template',
-            total_contacts: data.total,
-            success_count: data.success,
-            failed_count: data.failed,
-            status: 'completed',
-            delay_range: delayRange[0],
-            metadata: {
-              // We can add detailed logs here if needed, but for now summary is enough
-              jobId: activeJobId
-            }
-          });
-
-          // Update local quota state
-          if (quota) {
-            setQuota({
-              ...quota,
-              messages_used: quota.messages_used + data.success,
-              remaining: quota.remaining - data.success
-            });
-          }
-
-          setIsSending(false);
-          toast.success('Campaign completed!');
-
-          // Update result view
-          setSendResult({
-            success: true,
-            totalContacts: data.total,
-            successCount: data.success,
-            failedCount: data.failed,
-            templateName: selectedTemplateData?.name,
-            groupName: selectedGroupData.name,
-            selectedAssets: getSelectedAssets(),
-            sendingMode,
-            delayRange: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}`,
-            reservationId: reservationId
-          });
-
-        } catch (err) {
-          console.error('Failed to finalize campaign:', err);
-          toast.error('Campaign completed but failed to save results');
-        }
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [activeJobId, reservationId, quota, delayRange, sendingMode, selectedGroupId, selectedTemplate]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -980,7 +934,7 @@ export function SendPage({ userName }: { userName: string }) {
       setDelayRange={setDelayRange}
       isSending={isSending}
       sendResult={sendResult}
-      handleStartCampaign={handleStartCampaign}
+      simulateSend={simulateSend}
       targetContacts={targetContacts}
       selectedTemplateData={selectedTemplateData}
       selectedGroupData={selectedGroupData}
@@ -990,9 +944,6 @@ export function SendPage({ userName }: { userName: string }) {
       toggleAssetSelection={toggleAssetSelection}
       getAssetIcon={getAssetIcon}
       formatFileSize={formatFileSize}
-      showProgressModal={showProgressModal}
-      setShowProgressModal={setShowProgressModal}
-      activeJobId={activeJobId}
     />
   );
 }
