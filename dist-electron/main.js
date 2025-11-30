@@ -360,6 +360,12 @@ class MessageProcessor {
     this.mainWindow = mainWindow2;
   }
   /**
+   * Get current job being processed
+   */
+  getCurrentJob() {
+    return this.currentJob;
+  }
+  /**
    * Process a bulk message job
    */
   async processJob(job) {
