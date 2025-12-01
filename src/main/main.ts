@@ -31,8 +31,33 @@ const createWindow = () => {
         mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
         mainWindow.webContents.openDevTools();
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        // Use app.getAppPath() for reliable path resolution in production
+        const appPath = app.getAppPath();
+        const indexPath = path.join(appPath, 'dist', 'index.html');
+        console.log('App path:', appPath);
+        console.log('Loading file from:', indexPath);
+        mainWindow.loadFile(indexPath);
     }
+
+    // Debug: Log when page finishes loading
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('Page finished loading');
+    });
+
+    // Debug: Log any errors
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+        console.error('Failed to load:', errorCode, errorDescription);
+    });
+
+    // Prevent window reload (F5, Ctrl+R) which can cause blank screens
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.control && input.key.toLowerCase() === 'r') {
+            event.preventDefault();
+        }
+        if (input.key === 'F5') {
+            event.preventDefault();
+        }
+    });
 };
 
 // This method will be called when Electron has finished
