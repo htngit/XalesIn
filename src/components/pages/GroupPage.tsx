@@ -269,15 +269,19 @@ export function GroupPage() {
     let filtered = contacts.filter(contact => contact.group_id !== selectedGroup.id);
 
     if (contactSearchQuery) {
-      filtered = filtered.filter(contact =>
-        contact.name.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
-        contact.phone.includes(contactSearchQuery) ||
-        (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(contactSearchQuery.toLowerCase())))
-      );
+      filtered = filtered.filter(contact => {
+        const currentGroup = groups.find(g => g.id === contact.group_id);
+        return (
+          contact.name.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+          contact.phone.includes(contactSearchQuery) ||
+          (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(contactSearchQuery.toLowerCase()))) ||
+          (currentGroup && currentGroup.name.toLowerCase().includes(contactSearchQuery.toLowerCase()))
+        );
+      });
     }
 
     setFilteredContacts(filtered);
-  }, [contacts, contactSearchQuery, selectedGroup]);
+  }, [contacts, contactSearchQuery, selectedGroup, groups]);
 
   const getGroupContacts = (groupId: string) => {
     return contacts.filter(contact => contact.group_id === groupId);
@@ -567,7 +571,7 @@ export function GroupPage() {
 
         {/* Manage Contacts Dialog */}
         <Dialog open={isManageContactsDialogOpen} onOpenChange={setIsManageContactsDialogOpen}>
-          <DialogContent className="max-w-4xl">
+          <DialogContent className="!max-w-4xl">
             <DialogHeader>
               <DialogTitle>Manage Contacts - {selectedGroup?.name}</DialogTitle>
               <DialogDescription>
@@ -602,7 +606,7 @@ export function GroupPage() {
                     <div className="relative mb-4">
                       <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="Search contacts to add..."
+                        placeholder="Search by name, phone, tags, or group..."
                         value={contactSearchQuery}
                         onChange={(e) => setContactSearchQuery(e.target.value)}
                         className="pl-10"
@@ -613,7 +617,19 @@ export function GroupPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-12">Select</TableHead>
+                            <TableHead className="w-12">
+                              <Checkbox
+                                checked={filteredContacts.length > 0 && selectedContacts.length === filteredContacts.length}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedContacts(filteredContacts.map(c => c.id));
+                                  } else {
+                                    setSelectedContacts([]);
+                                  }
+                                }}
+                                aria-label="Select all contacts"
+                              />
+                            </TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Phone</TableHead>
                             <TableHead>Current Group</TableHead>
