@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
@@ -34,6 +34,7 @@ import { ContactModal } from '@/components/ui/ContactModal';
 import { UploadContactsDialog } from '@/components/ui/UploadContactsDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
+import { ContactsPagination } from '@/components/ui/ContactsPagination';
 import {
   Search,
   Upload,
@@ -52,6 +53,7 @@ import {
 // Placeholder content component for when data is loaded
 function ContactsPageContent({
   filteredContacts,
+  paginatedContacts,
   searchQuery,
   setSearchQuery,
   selectedContactIds,
@@ -68,10 +70,12 @@ function ContactsPageContent({
   getGroupById,
   stats,
   isLoading,
-  onUploadClick
+  onUploadClick,
+  paginationComponent
 }: {
   contacts: Contact[];
   filteredContacts: Contact[];
+  paginatedContacts: Contact[];
   groups: ContactGroup[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -90,6 +94,7 @@ function ContactsPageContent({
   stats: any;
   isLoading: boolean;
   onUploadClick: () => void;
+  paginationComponent: React.ReactNode;
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
@@ -230,7 +235,7 @@ function ContactsPageContent({
               </div>
             </CardHeader>
             <CardContent>
-              {filteredContacts.length === 0 && !isLoading ? (
+              {paginatedContacts.length === 0 && !isLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   {searchQuery
                     ? intl.formatMessage({ id: 'contacts.empty.search', defaultMessage: 'No contacts found matching your search.' })
@@ -243,7 +248,7 @@ function ContactsPageContent({
                     <TableRow>
                       <TableHead className="w-12">
                         <Checkbox
-                          checked={selectedContactIds.size === filteredContacts.length && filteredContacts.length > 0}
+                          checked={selectedContactIds.size === paginatedContacts.length && paginatedContacts.length > 0}
                           onCheckedChange={handleSelectAll}
                           aria-label={intl.formatMessage({ id: 'contacts.list.aria.select_all', defaultMessage: 'Select all contacts' })}
                           disabled={isLoading}
@@ -281,7 +286,7 @@ function ContactsPageContent({
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredContacts.map((contact) => {
+                      paginatedContacts.map((contact) => {
                         const group = getGroupById(contact.group_id);
                         const isSelected = selectedContactIds.has(contact.id);
                         return (
@@ -363,6 +368,11 @@ function ContactsPageContent({
               )}
             </CardContent>
           </AnimatedCard>
+
+          {/* Pagination Controls */}
+          <div className="mt-6">
+            {paginationComponent}
+          </div>
         </FadeIn>
 
         {/* Bulk Delete Confirmation Dialog */}
@@ -410,6 +420,10 @@ export function ContactsPage() {
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   // Multi-select state
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
@@ -498,7 +512,7 @@ export function ContactsPage() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedContactIds(new Set(filteredContacts.map(c => c.id)));
+      setSelectedContactIds(new Set(paginatedContacts.map((contact: Contact) => contact.id)));
     } else {
       setSelectedContactIds(new Set());
     }
@@ -588,7 +602,16 @@ export function ContactsPage() {
     }
 
     setFilteredContacts(filtered);
+    // Reset to first page when contacts or search query changes
+    setCurrentPage(1);
   }, [contacts, searchQuery]);
+
+  // Pagination effect - calculate paginated contacts
+  const paginatedContacts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredContacts.slice(startIndex, endIndex);
+  }, [filteredContacts, currentPage, itemsPerPage]);
 
   const getGroupById = (groupId: string) => {
     return groups.find(g => g.id === groupId);
@@ -629,6 +652,7 @@ export function ContactsPage() {
       <ContactsPageContent
         contacts={contacts}
         filteredContacts={filteredContacts}
+        paginatedContacts={paginatedContacts}
         groups={groups}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
@@ -647,6 +671,15 @@ export function ContactsPage() {
         stats={stats}
         isLoading={isLoading}
         onUploadClick={() => setShowUploadDialog(true)}
+        paginationComponent={
+          <ContactsPagination
+            totalItems={filteredContacts.length}
+            itemsPerPage={itemsPerPage}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        }
       />
 
       {/* Contact Modal */}

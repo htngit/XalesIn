@@ -5,7 +5,7 @@ export class StatusWorker {
     private whatsappManager: WhatsAppManager;
     private mainWindow: BrowserWindow;
     private checkInterval: NodeJS.Timeout | null = null;
-    private readonly CHECK_INTERVAL_MS = 30000; // 30 seconds
+    private readonly CHECK_INTERVAL_MS = 180000; // 3 minutes (180,000 ms)
 
     constructor(whatsappManager: WhatsAppManager, mainWindow: BrowserWindow) {
         this.whatsappManager = whatsappManager;

@@ -761,12 +761,12 @@ const setupIPC = (mainWindow2, wm, mp, qw) => {
   console.log("[IPC] IPC handlers setup complete");
 };
 class StatusWorker {
-  // 30 seconds
+  // 3 minutes (180,000 ms)
   constructor(whatsappManager2, mainWindow2) {
     __publicField(this, "whatsappManager");
     __publicField(this, "mainWindow");
     __publicField(this, "checkInterval", null);
-    __publicField(this, "CHECK_INTERVAL_MS", 3e4);
+    __publicField(this, "CHECK_INTERVAL_MS", 18e4);
     this.whatsappManager = whatsappManager2;
     this.mainWindow = mainWindow2;
   }
