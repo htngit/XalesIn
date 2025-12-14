@@ -418,6 +418,13 @@ export class WhatsAppManager {
             const chatId = this.formatPhoneNumber(to);
             console.log(`[WhatsAppManager] Sending message to ${to} (formatted: ${chatId})`);
 
+            // Verify if the user is registered on WhatsApp
+            const isRegistered = await this.client.isRegisteredUser(chatId);
+            if (!isRegistered) {
+                console.warn(`[WhatsAppManager] User ${to} is not registered on WhatsApp.`);
+                throw new Error(`User ${to} is not registered on WhatsApp`);
+            }
+
             await this.client.sendMessage(chatId, content);
             console.log(`[WhatsAppManager] Message sent successfully to ${to}`);
 
@@ -447,6 +454,13 @@ export class WhatsAppManager {
             // Format phone number
             const chatId = this.formatPhoneNumber(to);
             console.log(`[WhatsAppManager] Sending media message to ${to} (formatted: ${chatId})`);
+
+            // Verify if the user is registered on WhatsApp
+            const isRegistered = await this.client.isRegisteredUser(chatId);
+            if (!isRegistered) {
+                console.warn(`[WhatsAppManager] User ${to} is not registered on WhatsApp.`);
+                throw new Error(`User ${to} is not registered on WhatsApp`);
+            }
 
             let media: MessageMedia;
             let localFilePath: string;
