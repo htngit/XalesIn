@@ -53,7 +53,6 @@ export class HistoryService {
     // Start auto sync
     this.syncManager.startAutoSync();
 
-    // Initial sync with error handling
     // Initial sync with error handling (non-blocking)
     this.syncManager.triggerSync().catch(error => {
       console.warn('Initial sync failed, will retry later:', error);
@@ -301,7 +300,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => !log._deleted && log.status === status)
@@ -328,7 +327,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => {
@@ -555,7 +554,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => !log._deleted)
@@ -714,16 +713,18 @@ export class HistoryService {
   /**
    * Get recent activity logs (limited count)
    * Optimized for Dashboard display
+   * ONLY returns message campaign logs (logs with template_id)
    */
   async getRecentActivity(limit: number = 5): Promise<ActivityLog[]> {
     try {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first - efficient query
+      // Filter: only logs with template_id (message campaigns, not session logs)
       const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
-        .and(log => !log._deleted)
+        .and(log => !log._deleted && !!log.template_id)
         .reverse() // Newest first
         .limit(limit)
         .toArray();
@@ -752,6 +753,7 @@ export class HistoryService {
           )
         `)
         .eq('master_user_id', masterUserId)
+        .not('template_id', 'is', null) // Only get logs with template_id (message campaigns)
         .order('created_at', { ascending: false })
         .limit(limit);
 

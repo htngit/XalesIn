@@ -87,6 +87,13 @@ const createWindow = async () => {
             },
         });
 
+        // Disable ALT key menu behavior
+        mainWindow.webContents.on('before-input-event', (_event, input) => {
+            if (input.alt) {
+                _event.preventDefault();
+            }
+        });
+
         // Set application icon for Windows taskbar and window with error handling
         if (process.platform === 'win32' && iconPath) {
             try {
@@ -109,6 +116,13 @@ const createWindow = async () => {
                 contextIsolation: true,
                 webSecurity: true,
             },
+        });
+    
+        // Disable ALT key menu behavior for fallback window
+        mainWindow.webContents.on('before-input-event', (_event, input) => {
+            if (input.alt) {
+                _event.preventDefault();
+            }
         });
     }
 

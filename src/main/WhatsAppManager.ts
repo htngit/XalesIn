@@ -390,7 +390,7 @@ export class WhatsAppManager {
      */
     clearFileCache(): void {
         console.log(`[WhatsAppManager] Clearing file cache (${this.fileCache.size} files)`);
-        for (const [url, filePath] of this.fileCache.entries()) {
+        for (const [, filePath] of this.fileCache.entries()) {
             try {
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);

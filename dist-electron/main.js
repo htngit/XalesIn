@@ -341,7 +341,7 @@ class WhatsAppManager {
    */
   clearFileCache() {
     console.log(`[WhatsAppManager] Clearing file cache (${this.fileCache.size} files)`);
-    for (const [url, filePath] of this.fileCache.entries()) {
+    for (const [, filePath] of this.fileCache.entries()) {
       try {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
@@ -1036,6 +1036,11 @@ const createWindow = async () => {
         webSecurity: true
       }
     });
+    mainWindow.webContents.on("before-input-event", (_event, input) => {
+      if (input.alt) {
+        _event.preventDefault();
+      }
+    });
     if (process.platform === "win32" && iconPath) {
       try {
         mainWindow.setIcon(iconPath);
@@ -1054,6 +1059,11 @@ const createWindow = async () => {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true
+      }
+    });
+    mainWindow.webContents.on("before-input-event", (_event, input) => {
+      if (input.alt) {
+        _event.preventDefault();
       }
     });
   }
