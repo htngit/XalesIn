@@ -803,6 +803,12 @@ export class HistoryService {
       let logsWithEmptyMetadata = 0;
 
       for (const log of activityLogs) {
+        // Filter out logs that are not message campaigns (e.g. session logs)
+        // Only process logs that have a template_id
+        if (!log.template_id) {
+          continue;
+        }
+
         // Handle missing metadata
         if (!log.metadata) {
           logsWithMissingMetadata++;
