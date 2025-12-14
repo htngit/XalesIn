@@ -81,7 +81,7 @@ export function TeamTab() {
                     <div className="text-center text-xs text-muted-foreground">
                         <p>Expected Release: in Q3 2026</p>
                     </div>
-                </CardContent>
+                </CardContent>kan
             </Card>
         </div>
     );

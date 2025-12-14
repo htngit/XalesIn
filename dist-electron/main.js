@@ -995,7 +995,7 @@ const createWindow = async () => {
   let iconPath;
   try {
     if (process.env.VITE_DEV_SERVER_URL) {
-      const publicPath = path.join(__dirname, "../../public/icon.png");
+      const publicPath = path.join("C:", "Users", "andry", "AnotherProjectCode", "Server", "XalesIn-Whatsapp", "xenderin", "public", "icon.png");
       console.log("[Main] Development mode - trying icon path:", publicPath);
       const fileExistsResult = await fileExists(publicPath);
       if (fileExistsResult) {
@@ -1005,14 +1005,13 @@ const createWindow = async () => {
         iconPath = void 0;
       }
     } else {
-      const appDir = path.dirname(electron.app.getAppPath());
-      const productionIconPath = path.join(appDir, "icon.ico");
+      const productionIconPath = path.join("C:", "Users", "andry", "AnotherProjectCode", "Server", "XalesIn-Whatsapp", "xenderin", "public", "icon.ico");
       console.log("[Main] Production mode - trying icon path:", productionIconPath);
       const fileExistsResult = await fileExists(productionIconPath);
       if (fileExistsResult) {
         iconPath = productionIconPath;
       } else {
-        const resourcesIconPath = path.join(process.resourcesPath, "icon.ico");
+        const resourcesIconPath = path.join("C:", "Users", "andry", "AnotherProjectCode", "Server", "XalesIn-Whatsapp", "xenderin", "public", "icon.ico");
         console.log("[Main] Fallback icon path:", resourcesIconPath);
         const resourcesFileExists = await fileExists(resourcesIconPath);
         iconPath = resourcesFileExists ? resourcesIconPath : void 0;

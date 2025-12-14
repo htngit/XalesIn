@@ -36,7 +36,7 @@ const createWindow = async () => {
     try {
         if (process.env.VITE_DEV_SERVER_URL) {
             // Development mode - use absolute path to public directory
-            const publicPath = path.join(__dirname, '../../public/icon.png');
+            const publicPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.png');
             console.log('[Main] Development mode - trying icon path:', publicPath);
 
             // Check if file exists before using it
@@ -48,9 +48,8 @@ const createWindow = async () => {
                 iconPath = undefined;
             }
         } else {
-            // Production mode - use icon.ico from app directory
-            const appDir = path.dirname(app.getAppPath());
-            const productionIconPath = path.join(appDir, 'icon.ico');
+            // Production mode - use icon.ico from full path
+            const productionIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
             console.log('[Main] Production mode - trying icon path:', productionIconPath);
 
             // Check if file exists before using it
@@ -59,7 +58,7 @@ const createWindow = async () => {
                 iconPath = productionIconPath;
             } else {
                 // Fallback to resources path if icon.ico not found in app directory
-                const resourcesIconPath = path.join(process.resourcesPath, 'icon.ico');
+                const resourcesIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
                 console.log('[Main] Fallback icon path:', resourcesIconPath);
                 const resourcesFileExists = await fileExists(resourcesIconPath);
                 iconPath = resourcesFileExists ? resourcesIconPath : undefined;
@@ -117,7 +116,7 @@ const createWindow = async () => {
                 webSecurity: true,
             },
         });
-    
+
         // Disable ALT key menu behavior for fallback window
         mainWindow.webContents.on('before-input-event', (_event, input) => {
             if (input.alt) {
