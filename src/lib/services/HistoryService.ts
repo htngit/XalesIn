@@ -17,9 +17,34 @@ export class HistoryService {
   private syncManager: SyncManager;
   private masterUserId: string | null = null;
 
+  private localListeners: ((log: ActivityLog) => void)[] = [];
+
   constructor(syncManager?: SyncManager) {
     this.syncManager = syncManager || new SyncManager();
     this.setupSyncEventListeners();
+  }
+
+  /**
+   * Subscribe to local history updates (for immediate UI refresh)
+   */
+  subscribeToLocalUpdates(callback: (log: ActivityLog) => void): () => void {
+    this.localListeners.push(callback);
+    return () => {
+      this.localListeners = this.localListeners.filter(l => l !== callback);
+    };
+  }
+
+  /**
+   * Notify local listeners of changes
+   */
+  private notifyLocalListeners(log: ActivityLog) {
+    this.localListeners.forEach(listener => {
+      try {
+        listener(log);
+      } catch (error) {
+        console.error('Error in local history listener:', error);
+      }
+    });
   }
 
   /**
@@ -412,7 +437,9 @@ export class HistoryService {
       await this.syncManager.addToSyncQueue('activityLogs', 'create', logId, syncData);
 
       // Return transformed log
-      return this.transformLocalLogs([localLog])[0];
+      const transformedLog = this.transformLocalLogs([localLog])[0];
+      this.notifyLocalListeners(transformedLog);
+      return transformedLog;
     } catch (error) {
       console.error('Error creating activity log:', error);
       throw new Error(handleDatabaseError(error));
@@ -472,6 +499,9 @@ export class HistoryService {
         // Transform for sync queue (convert Date objects to ISO strings)
         const syncData = localToSupabase(updatedLog);
         await this.syncManager.addToSyncQueue('activityLogs', 'update', id, syncData);
+
+        // Notify local listeners
+        this.notifyLocalListeners(this.transformLocalLogs([updatedLog])[0]);
       }
     } catch (error) {
       console.error('Error updating log status:', error);

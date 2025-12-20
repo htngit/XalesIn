@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     AlertDialog,
-    AlertDialogAction,
     AlertDialogCancel,
     AlertDialogContent,
     AlertDialogDescription,
@@ -10,7 +9,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { Upload, Download, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
 import { generateContactTemplate, parseContactsXLS, type ParsedContact } from '@/lib/utils/xlsHandler';
 import { useServices } from '@/lib/services/ServiceContext';
 import { toast } from '@/hooks/use-toast';
@@ -117,7 +116,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                 setError('No valid contacts found in the file. Please check the template.');
             } else {
                 // Validate phone numbers
-                const { valid, invalid } = validateContacts(contacts);
+                const { invalid } = validateContacts(contacts);
 
                 setParsedContacts(contacts); // Store all initially
                 if (invalid.length > 0) {

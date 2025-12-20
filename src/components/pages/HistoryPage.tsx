@@ -334,6 +334,16 @@ export function HistoryPage() {
   useEffect(() => {
     if (isInitialized) {
       loadData();
+
+      // Subscribe to real-time updates
+      const unsubscribe = historyService.subscribeToLocalUpdates(() => {
+        // Refresh data when any log changes
+        loadData();
+      });
+
+      return () => {
+        unsubscribe();
+      };
     }
   }, [isInitialized, historyService]);
 

@@ -1,5 +1,5 @@
 appId: com.xenderin.whatsapp
-productName: Xender-In WhatsApp Automation
+productName: Xender-In
 directories:
   output: dist_electron_build
   buildResources: build
@@ -22,4 +22,4 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Xender-In WhatsApp
+  shortcutName: Xender-In

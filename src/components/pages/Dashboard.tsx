@@ -70,12 +70,13 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   // Subscriptions refs
   const quotaSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const paymentSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const historySubscriptionRef = useRef<(() => void) | null>(null);
 
   // Guard against double init
   const initializedRef = useRef(false);
 
   // Get services from context
-  const { authService, quotaService, paymentService } = useServices();
+  const { authService, quotaService, paymentService, historyService } = useServices();
 
   // ---------------------------------------------------------------------
   // Initialization logic (runs once when user info is ready)
@@ -165,6 +166,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         setupQuotaSubscription(currentQuota.user_id);
       }
 
+      setupHistorySubscription();
+
       // Update stats
       setStats({
         totalContacts: contactStats.length,
@@ -222,12 +225,41 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
   };
 
+  const setupHistorySubscription = () => {
+    if (historySubscriptionRef.current) {
+      historySubscriptionRef.current();
+    }
+
+    // Subscribe to local history updates
+    const unsubscribe = historyService.subscribeToLocalUpdates((log) => {
+      // Refresh recent activity when a log is added/updated
+      // Only process if it's a message campaign (has template_id)
+      if (log.template_id) {
+        historyService.getRecentActivity(5).then(logs => {
+          const activities: Activity[] = logs.map(log => ({
+            id: log.id,
+            type: 'send', // Simplified for now
+            description: log.template_name || intl.formatMessage({ id: 'dashboard.activity.campaign', defaultMessage: 'Message Campaign' }),
+            time: new Date(log.created_at).toLocaleDateString(intl.locale),
+            status: log.status === 'completed' ? 'success' : log.status === 'failed' ? 'failed' : 'pending'
+          }));
+          setRecentActivity(activities);
+        });
+      }
+    });
+
+    historySubscriptionRef.current = unsubscribe;
+  };
+
   const cleanupSubscriptions = () => {
     if (quotaSubscriptionRef.current) {
       quotaSubscriptionRef.current.unsubscribe();
     }
     if (paymentSubscriptionRef.current) {
       paymentSubscriptionRef.current.unsubscribe();
+    }
+    if (historySubscriptionRef.current) {
+      historySubscriptionRef.current();
     }
   };
 

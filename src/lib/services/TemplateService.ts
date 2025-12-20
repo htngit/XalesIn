@@ -108,6 +108,10 @@ export class TemplateService {
     }
 
     this.masterUserId = profile?.master_user_id || user.id;
+
+    // Ensure SyncManager has the masterUserId
+    this.syncManager.setMasterUserId(this.masterUserId);
+
     return this.masterUserId!;
   }
 
@@ -655,6 +659,9 @@ export class TemplateService {
    * Force sync with server
    */
   async forceSync(): Promise<void> {
+    if (!this.masterUserId) {
+      await this.getMasterUserId();
+    }
     await this.syncManager.triggerSync();
   }
 
