@@ -1,5 +1,5 @@
 appId: com.xenderin.whatsapp
-productName: Xender-In WhatsApp Automation
+productName: Xender-In
 directories:
   output: dist_electron_build
   buildResources: build
@@ -7,12 +7,19 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+asarUnpack:
+  - "**/*.local-chromium/**/*"
+  - "**/puppeteer-core/**/*"
+  - "**/whatsapp-web.js/**/*"
 win:
   target: nsis
-  icon: public/icon.ico
+  icon: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+extraResources:
+  - from: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+    to: icon.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Xender-In WhatsApp
+  shortcutName: Xender-In

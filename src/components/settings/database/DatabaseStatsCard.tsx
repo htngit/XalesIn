@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, MessageSquare, UsersRound, Database } from 'lucide-react';
+import { Users, FileImage, UsersRound, Database } from 'lucide-react';
 import { db } from '@/lib/db';
 
 interface DatabaseStats {
     contactsCount: number;
-    messagesCount: number;
+    assetsCount: number;
     groupsCount: number;
     databaseSize: string;
 }
@@ -13,7 +13,7 @@ interface DatabaseStats {
 export function DatabaseStatsCard() {
     const [stats, setStats] = useState<DatabaseStats>({
         contactsCount: 0,
-        messagesCount: 0,
+        assetsCount: 0,
         groupsCount: 0,
         databaseSize: 'Calculating...',
     });
@@ -22,22 +22,31 @@ export function DatabaseStatsCard() {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const [contacts, messages, groups] = await Promise.all([
+                // Get counts
+                const [contacts, groups, assets] = await Promise.all([
                     db.contacts.count(),
-                    db.activityLogs.count(),
                     db.groups.count(),
+                    db.asset_blobs.count(),
                 ]);
 
+                // Calculate asset size
+                let assetsSize = 0;
+                await db.asset_blobs.each((blob) => {
+                    assetsSize += blob.size;
+                });
+
                 // Estimate database size (rough calculation)
-                // Assuming avg sizes: Contact ~2KB, Message ~1KB, Group ~3KB
-                const estimatedSize = ((contacts * 2) + (messages * 1) + (groups * 3)); // KB
-                const sizeStr = estimatedSize > 1024
-                    ? `${(estimatedSize / 1024).toFixed(2)} MB`
-                    : `${estimatedSize.toFixed(2)} KB`;
+                // Assuming avg sizes: Contact ~2KB, Group ~3KB, plus actual asset size
+                // We exclude activity logs from calculation as requested to be hidden
+                const estimatedSize = (contacts * 2048) + (groups * 3072) + assetsSize; // Bytes
+
+                const sizeStr = estimatedSize > 1024 * 1024
+                    ? `${(estimatedSize / (1024 * 1024)).toFixed(2)} MB`
+                    : `${(estimatedSize / 1024).toFixed(2)} KB`;
 
                 setStats({
                     contactsCount: contacts,
-                    messagesCount: messages,
+                    assetsCount: assets,
                     groupsCount: groups,
                     databaseSize: sizeStr,
                 });
@@ -59,9 +68,9 @@ export function DatabaseStatsCard() {
             color: 'text-blue-500',
         },
         {
-            label: 'Activity Logs',
-            value: stats.messagesCount.toLocaleString(),
-            icon: MessageSquare,
+            label: 'Asset Qty',
+            value: stats.assetsCount.toLocaleString(),
+            icon: FileImage,
             color: 'text-green-500',
         },
         {

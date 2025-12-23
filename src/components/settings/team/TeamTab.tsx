@@ -1,5 +1,4 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Lock, Users, Shield, BarChart3, FileText, Zap } from 'lucide-react';
 
 export function TeamTab() {
@@ -80,9 +79,9 @@ export function TeamTab() {
                     </div>
 
                     <div className="text-center text-xs text-muted-foreground">
-                        <p>Expected Release: in 2026</p>
+                        <p>Expected Release: in Q3 2026</p>
                     </div>
-                </CardContent>
+                </CardContent>kan
             </Card>
         </div>
     );

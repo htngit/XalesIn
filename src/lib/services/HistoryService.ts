@@ -17,9 +17,34 @@ export class HistoryService {
   private syncManager: SyncManager;
   private masterUserId: string | null = null;
 
+  private localListeners: ((log: ActivityLog) => void)[] = [];
+
   constructor(syncManager?: SyncManager) {
     this.syncManager = syncManager || new SyncManager();
     this.setupSyncEventListeners();
+  }
+
+  /**
+   * Subscribe to local history updates (for immediate UI refresh)
+   */
+  subscribeToLocalUpdates(callback: (log: ActivityLog) => void): () => void {
+    this.localListeners.push(callback);
+    return () => {
+      this.localListeners = this.localListeners.filter(l => l !== callback);
+    };
+  }
+
+  /**
+   * Notify local listeners of changes
+   */
+  private notifyLocalListeners(log: ActivityLog) {
+    this.localListeners.forEach(listener => {
+      try {
+        listener(log);
+      } catch (error) {
+        console.error('Error in local history listener:', error);
+      }
+    });
   }
 
   /**
@@ -53,7 +78,6 @@ export class HistoryService {
     // Start auto sync
     this.syncManager.startAutoSync();
 
-    // Initial sync with error handling
     // Initial sync with error handling (non-blocking)
     this.syncManager.triggerSync().catch(error => {
       console.warn('Initial sync failed, will retry later:', error);
@@ -301,7 +325,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => !log._deleted && log.status === status)
@@ -328,7 +352,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => {
@@ -413,7 +437,9 @@ export class HistoryService {
       await this.syncManager.addToSyncQueue('activityLogs', 'create', logId, syncData);
 
       // Return transformed log
-      return this.transformLocalLogs([localLog])[0];
+      const transformedLog = this.transformLocalLogs([localLog])[0];
+      this.notifyLocalListeners(transformedLog);
+      return transformedLog;
     } catch (error) {
       console.error('Error creating activity log:', error);
       throw new Error(handleDatabaseError(error));
@@ -430,7 +456,7 @@ export class HistoryService {
     errorMessage?: string
   ): Promise<void> {
     try {
-      const masterUserId = await this.getMasterUserId();
+      await this.getMasterUserId();
 
       // Check if log exists locally
       const existingLog = await db.activityLogs.get(id);
@@ -473,6 +499,9 @@ export class HistoryService {
         // Transform for sync queue (convert Date objects to ISO strings)
         const syncData = localToSupabase(updatedLog);
         await this.syncManager.addToSyncQueue('activityLogs', 'update', id, syncData);
+
+        // Notify local listeners
+        this.notifyLocalListeners(this.transformLocalLogs([updatedLog])[0]);
       }
     } catch (error) {
       console.error('Error updating log status:', error);
@@ -555,7 +584,7 @@ export class HistoryService {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first
-      let localLogs = await db.activityLogs
+      const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
         .and(log => !log._deleted)
@@ -714,16 +743,18 @@ export class HistoryService {
   /**
    * Get recent activity logs (limited count)
    * Optimized for Dashboard display
+   * ONLY returns message campaign logs (logs with template_id)
    */
   async getRecentActivity(limit: number = 5): Promise<ActivityLog[]> {
     try {
       const masterUserId = await this.getMasterUserId();
 
       // Try local first - efficient query
+      // Filter: only logs with template_id (message campaigns, not session logs)
       const localLogs = await db.activityLogs
         .where('master_user_id')
         .equals(masterUserId)
-        .and(log => !log._deleted)
+        .and(log => !log._deleted && !!log.template_id)
         .reverse() // Newest first
         .limit(limit)
         .toArray();
@@ -752,6 +783,7 @@ export class HistoryService {
           )
         `)
         .eq('master_user_id', masterUserId)
+        .not('template_id', 'is', null) // Only get logs with template_id (message campaigns)
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -790,20 +822,74 @@ export class HistoryService {
   /**
    * Get all individual message logs from all campaigns
    * Flattens the metadata.logs from each activity log
+   * Handles cases where metadata.logs is missing or empty
+   * Provides fallback mechanism and proper error handling
    */
   async getAllMessageLogs(): Promise<MessageLog[]> {
     try {
       const activityLogs = await this.getActivityLogs();
       const messageLogs: MessageLog[] = [];
+      let logsWithMissingMetadata = 0;
+      let logsWithEmptyMetadata = 0;
 
       for (const log of activityLogs) {
-        if (log.metadata && Array.isArray(log.metadata.logs)) {
-          const logs = log.metadata.logs as MessageLog[];
-          messageLogs.push(...logs);
+        // Filter out logs that are not message campaigns (e.g. session logs)
+        // Only process logs that have a template_id
+        if (!log.template_id) {
+          continue;
         }
+
+        // Handle missing metadata
+        if (!log.metadata) {
+          logsWithMissingMetadata++;
+          console.warn(`Activity log ${log.id} has no metadata - creating fallback message log`);
+
+          // Create fallback message log for this activity
+          const fallbackLog: MessageLog = {
+            id: `fallback-${log.id}-${crypto.randomUUID()}`,
+            activity_log_id: log.id,
+            contact_id: '', // No contact info available
+            contact_name: 'Unknown Contact', // Fallback name
+            contact_phone: 'Unknown Number', // Fallback phone
+            status: log.status === 'completed' ? 'sent' : log.status === 'failed' ? 'failed' : 'pending',
+            sent_at: log.created_at || new Date().toISOString(),
+            error_message: log.error_message || `No detailed logs available for this activity (${log.status})`
+          };
+          messageLogs.push(fallbackLog);
+          continue;
+        }
+
+        // Handle missing or empty logs array
+        if (!log.metadata.logs || !Array.isArray(log.metadata.logs) || log.metadata.logs.length === 0) {
+          logsWithEmptyMetadata++;
+          console.warn(`Activity log ${log.id} has empty or invalid metadata.logs - creating fallback message log`);
+
+          // Create fallback message log for this activity
+          const fallbackLog: MessageLog = {
+            id: `fallback-${log.id}-${crypto.randomUUID()}`,
+            activity_log_id: log.id,
+            contact_id: '', // No contact info available
+            contact_name: 'Unknown Contact', // Fallback name
+            contact_phone: 'Unknown Number', // Fallback phone
+            status: log.status === 'completed' ? 'sent' : log.status === 'failed' ? 'failed' : 'pending',
+            sent_at: log.created_at || new Date().toISOString(),
+            error_message: log.error_message || `No detailed message logs available for this activity (${log.status})`
+          };
+          messageLogs.push(fallbackLog);
+          continue;
+        }
+
+        // Normal case: valid logs array
+        const logs = log.metadata.logs as MessageLog[];
+        messageLogs.push(...logs);
       }
 
-      // Sort by sent_at descending
+      // Log statistics about data quality
+      if (logsWithMissingMetadata > 0 || logsWithEmptyMetadata > 0) {
+        console.info(`Message logs summary: ${messageLogs.length} total logs, ${logsWithMissingMetadata} with missing metadata, ${logsWithEmptyMetadata} with empty logs`);
+      }
+
+      // Sort by sent_at descending (newest first)
       return messageLogs.sort((a, b) => {
         const dateA = a.sent_at ? new Date(a.sent_at).getTime() : 0;
         const dateB = b.sent_at ? new Date(b.sent_at).getTime() : 0;
@@ -811,7 +897,29 @@ export class HistoryService {
       });
     } catch (error) {
       console.error('Error fetching message logs:', error);
-      // Return empty array on error to prevent UI crash
+
+      // Enhanced error handling with meaningful error messages
+      let errorMessage = 'Unknown error occurred while fetching message logs';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+
+        // Provide specific guidance for common error scenarios
+        if (error.message.includes('network') || error.message.includes('offline')) {
+          errorMessage = 'Cannot fetch message logs: Network connection required';
+        } else if (error.message.includes('permission') || error.message.includes('access')) {
+          errorMessage = 'Cannot fetch message logs: Insufficient permissions';
+        }
+      }
+
+      // Log the enhanced error for debugging
+      console.error('Enhanced error details:', {
+        originalError: error,
+        userFriendlyMessage: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      // Return empty array to prevent UI crash, but consider throwing
+      // a more specific error that the UI can handle gracefully
       return [];
     }
   }

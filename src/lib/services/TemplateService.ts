@@ -108,6 +108,10 @@ export class TemplateService {
     }
 
     this.masterUserId = profile?.master_user_id || user.id;
+
+    // Ensure SyncManager has the masterUserId
+    this.syncManager.setMasterUserId(this.masterUserId);
+
     return this.masterUserId!;
   }
 
@@ -235,7 +239,7 @@ export class TemplateService {
    * Fetch templates directly from server
    */
   private async fetchTemplatesFromServer(): Promise<Template[]> {
-    const user = await this.getCurrentUser();
+    await this.getCurrentUser();
     const masterUserId = await this.getMasterUserId();
 
     const { data, error } = await supabase
@@ -424,8 +428,8 @@ export class TemplateService {
         throw new Error('Access denied: insufficient permissions to update templates');
       }
 
-      const user = await this.getCurrentUser();
-      const masterUserId = await this.getMasterUserId();
+      await this.getCurrentUser();
+      await this.getMasterUserId();
 
       // Check if template exists locally
       const existingTemplate = await db.templates.get(id);
@@ -498,7 +502,7 @@ export class TemplateService {
         throw new Error('Access denied: insufficient permissions to delete templates');
       }
 
-      const masterUserId = await this.getMasterUserId();
+      await this.getMasterUserId();
 
       // Check if template exists locally
       const existingTemplate = await db.templates.get(id);
@@ -655,6 +659,9 @@ export class TemplateService {
    * Force sync with server
    */
   async forceSync(): Promise<void> {
+    if (!this.masterUserId) {
+      await this.getMasterUserId();
+    }
     await this.syncManager.triggerSync();
   }
 

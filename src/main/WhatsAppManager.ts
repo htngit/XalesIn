@@ -1,6 +1,9 @@
 import { Client, LocalAuth, Message, MessageMedia } from 'whatsapp-web.js';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import * as qrcode from 'qrcode-terminal';
+import { MessageReceiverWorker } from './workers/MessageReceiverWorker';
+import path from 'path';
+import fs from 'fs';
 
 /**
  * WhatsAppManager - Core WhatsApp client manager
@@ -10,10 +13,57 @@ export class WhatsAppManager {
     private client: Client | null = null;
     private mainWindow: BrowserWindow | null = null;
     private status: 'disconnected' | 'connecting' | 'ready' = 'disconnected';
+    private messageReceiverWorker: MessageReceiverWorker | null = null;
+
+    // File cache to avoid re-downloading the same asset URL during a session
+    private fileCache: Map<string, string> = new Map();
 
     constructor(mainWindow: BrowserWindow) {
         this.mainWindow = mainWindow;
         this.initializeClient();
+    }
+
+    /**
+     * Set the MessageReceiverWorker
+     */
+    setMessageReceiverWorker(worker: MessageReceiverWorker) {
+        this.messageReceiverWorker = worker;
+    }
+
+    /**
+     * Get the correct executable path for Puppeteer in production
+     */
+    private getChromiumExecutablePath(): string | undefined {
+        if (!app.isPackaged) {
+            // Development mode - let Puppeteer use default
+            return undefined;
+        }
+
+        // Production mode - point to unpacked chromium
+        // Path: resources/app.asar.unpacked/node_modules/whatsapp-web.js/node_modules/puppeteer-core/.local-chromium/win64-1045629/chrome-win/chrome.exe
+        const chromiumPath = path.join(
+            process.resourcesPath,
+            'app.asar.unpacked',
+            'node_modules',
+            'whatsapp-web.js',
+            'node_modules',
+            'puppeteer-core',
+            '.local-chromium',
+            'win64-1045629',
+            'chrome-win',
+            'chrome.exe'
+        );
+
+        console.log('[WhatsAppManager] Checking Chromium path:', chromiumPath);
+
+        if (fs.existsSync(chromiumPath)) {
+            console.log('[WhatsAppManager] Chromium found at:', chromiumPath);
+            return chromiumPath;
+        } else {
+            console.error('[WhatsAppManager] Chromium not found at expected path:', chromiumPath);
+            // Return undefined to let Puppeteer try its default resolution
+            return undefined;
+        }
     }
 
     /**
@@ -23,21 +73,41 @@ export class WhatsAppManager {
         try {
             console.log('[WhatsAppManager] Initializing client...');
 
+            const executablePath = this.getChromiumExecutablePath();
+
+            // Puppeteer configuration
+            const puppeteerConfig: any = {
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu'
+                ]
+            };
+
+            // Set executablePath if we found it
+            if (executablePath) {
+                puppeteerConfig.executablePath = executablePath;
+            }
+
+            console.log('[WhatsAppManager] Puppeteer config:', JSON.stringify(puppeteerConfig, null, 2));
+
             this.client = new Client({
                 authStrategy: new LocalAuth({
-                    dataPath: '.wwebjs_auth'
+                    dataPath: app.isPackaged
+                        ? path.join(app.getPath('userData'), '.wwebjs_auth')
+                        : '.wwebjs_auth'
                 }),
-                puppeteer: {
-                    headless: true,
-                    args: [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu'
-                    ]
+                puppeteer: puppeteerConfig,
+                // Fix for "Cannot read properties of undefined (reading 'VERSION')" error
+                // This tells the library to fetch the latest WhatsApp Web version from a remote cache
+                webVersionCache: {
+                    type: 'remote',
+                    remotePath: 'https://raw.githubusercontent.com/AntoniaSaGe/AntoniaSaGe/main/whatsapp-web-version'
                 }
             });
 
@@ -81,7 +151,15 @@ export class WhatsAppManager {
         // Authenticated event
         this.client.on('authenticated', () => {
             console.log('[WhatsAppManager] Client authenticated');
-            // Don't change status here, wait for 'ready' event
+            // Some whatsapp-web.js versions don't fire 'ready' properly with webVersionCache
+            // Set a fallback timeout to force 'ready' status
+            setTimeout(() => {
+                if (this.status !== 'ready') {
+                    console.log('[WhatsAppManager] Fallback: Setting status to ready after authentication');
+                    this.status = 'ready';
+                    this.broadcastStatus('ready');
+                }
+            }, 5000); // 5 second fallback
         });
 
         // Authentication failure event
@@ -110,21 +188,26 @@ export class WhatsAppManager {
             console.log(`[WhatsAppManager] Loading... ${percent}% - ${message}`);
         });
 
-        // Message received event (for future MessageReceiverWorker)
+        // Message received event
         this.client.on('message', async (message: Message) => {
             console.log('[WhatsAppManager] Message received:', message.from);
 
-            // Broadcast to renderer
-            if (this.mainWindow) {
-                this.mainWindow.webContents.send('whatsapp:message-received', {
-                    id: message.id._serialized,
-                    from: message.from,
-                    to: message.to,
-                    body: message.body,
-                    type: message.type,
-                    timestamp: message.timestamp,
-                    hasMedia: message.hasMedia
-                });
+            // Forward to MessageReceiverWorker
+            if (this.messageReceiverWorker) {
+                await this.messageReceiverWorker.handleIncomingMessage(message);
+            } else {
+                // Fallback broadcast if worker not set
+                if (this.mainWindow) {
+                    this.mainWindow.webContents.send('whatsapp:message-received', {
+                        id: message.id._serialized,
+                        from: message.from,
+                        to: message.to,
+                        body: message.body,
+                        type: message.type,
+                        timestamp: message.timestamp,
+                        hasMedia: message.hasMedia
+                    });
+                }
             }
         });
     }
@@ -181,6 +264,12 @@ export class WhatsAppManager {
 
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');
+
+            // Clear file cache on disconnect
+            this.clearFileCache();
+
+            // Re-initialize client so it can be connected again
+            this.initializeClient();
         } catch (error) {
             console.error('[WhatsAppManager] Disconnect error:', error);
             this.status = 'disconnected';
@@ -214,30 +303,59 @@ export class WhatsAppManager {
     }
 
     /**
-     * Download a file from URL to temporary directory
+     * Download a file from URL to temporary directory with retry mechanism and caching
      * @param url - URL of the file to download
+     * @param maxRetries - Maximum number of retries (default: 3)
      * @returns Path to the downloaded file
      */
-    private async downloadFile(url: string): Promise<string> {
+    private async downloadFile(url: string, maxRetries = 3): Promise<string> {
+        // Check cache first
+        const cachedPath = this.fileCache.get(url);
+        if (cachedPath && fs.existsSync(cachedPath)) {
+            console.log(`[WhatsAppManager] Using cached file for: ${url}`);
+            return cachedPath;
+        }
+
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const filePath = await this._downloadFileInternal(url);
+                // Cache the downloaded file path
+                this.fileCache.set(url, filePath);
+                console.log(`[WhatsAppManager] File cached for URL: ${url}`);
+                return filePath;
+            } catch (error) {
+                console.warn(`[WhatsAppManager] Download attempt ${attempt + 1}/${maxRetries} failed:`, error);
+                if (attempt === maxRetries - 1) throw error;
+                // Exponential backoff: 1s, 2s, 4s...
+                await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            }
+        }
+        throw new Error(`Failed to download file after ${maxRetries} attempts`);
+    }
+
+    /**
+     * Internal implementation of file download
+     */
+    private async _downloadFileInternal(url: string): Promise<string> {
         const https = await import('https');
         const http = await import('http');
-        const fs = await import('fs');
-        const path = await import('path');
+        const fsAsync = await import('fs');
+        const pathModule = await import('path');
         const os = await import('os');
 
         return new Promise((resolve, reject) => {
             try {
                 // Generate temp file path
                 const tempDir = os.tmpdir();
-                const fileName = `whatsapp_media_${Date.now()}_${path.basename(url).split('?')[0]}`;
-                const tempFilePath = path.join(tempDir, fileName);
+                const fileName = `whatsapp_media_${Date.now()}_${pathModule.basename(url).split('?')[0]}`;
+                const tempFilePath = pathModule.join(tempDir, fileName);
 
                 console.log(`[WhatsAppManager] Downloading to: ${tempFilePath}`);
 
                 // Choose http or https based on URL
                 const client = url.startsWith('https://') ? https : http;
 
-                const file = fs.createWriteStream(tempFilePath);
+                const file = fsAsync.createWriteStream(tempFilePath);
 
                 client.get(url, (response) => {
                     if (response.statusCode !== 200) {
@@ -254,17 +372,35 @@ export class WhatsAppManager {
                     });
 
                     file.on('error', (err) => {
-                        fs.unlink(tempFilePath, () => { }); // Delete the file on error
+                        fsAsync.unlink(tempFilePath, () => { }); // Delete the file on error
                         reject(err);
                     });
                 }).on('error', (err) => {
-                    fs.unlink(tempFilePath, () => { }); // Delete the file on error
+                    fsAsync.unlink(tempFilePath, () => { }); // Delete the file on error
                     reject(err);
                 });
             } catch (error) {
                 reject(error);
             }
         });
+    }
+
+    /**
+     * Clear the file cache and delete cached files
+     */
+    clearFileCache(): void {
+        console.log(`[WhatsAppManager] Clearing file cache (${this.fileCache.size} files)`);
+        for (const [, filePath] of this.fileCache.entries()) {
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    console.log(`[WhatsAppManager] Deleted cached file: ${filePath}`);
+                }
+            } catch (error) {
+                console.warn(`[WhatsAppManager] Failed to delete cached file: ${filePath}`, error);
+            }
+        }
+        this.fileCache.clear();
     }
 
     /**
@@ -281,6 +417,13 @@ export class WhatsAppManager {
             // Format phone number
             const chatId = this.formatPhoneNumber(to);
             console.log(`[WhatsAppManager] Sending message to ${to} (formatted: ${chatId})`);
+
+            // Verify if the user is registered on WhatsApp
+            const isRegistered = await this.client.isRegisteredUser(chatId);
+            if (!isRegistered) {
+                console.warn(`[WhatsAppManager] User ${to} is not registered on WhatsApp.`);
+                throw new Error(`User ${to} is not registered on WhatsApp`);
+            }
 
             await this.client.sendMessage(chatId, content);
             console.log(`[WhatsAppManager] Message sent successfully to ${to}`);
@@ -303,8 +446,6 @@ export class WhatsAppManager {
         content: string,
         mediaPath: string
     ): Promise<boolean> {
-        let tempFilePath: string | null = null;
-
         try {
             if (!this.client || this.status !== 'ready') {
                 throw new Error('WhatsApp client is not ready');
@@ -314,36 +455,40 @@ export class WhatsAppManager {
             const chatId = this.formatPhoneNumber(to);
             console.log(`[WhatsAppManager] Sending media message to ${to} (formatted: ${chatId})`);
 
+            // Verify if the user is registered on WhatsApp
+            const isRegistered = await this.client.isRegisteredUser(chatId);
+            if (!isRegistered) {
+                console.warn(`[WhatsAppManager] User ${to} is not registered on WhatsApp.`);
+                throw new Error(`User ${to} is not registered on WhatsApp`);
+            }
+
             let media: MessageMedia;
+            let localFilePath: string;
 
             // Check if mediaPath is a URL
             if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
                 console.log(`[WhatsAppManager] Downloading remote file: ${mediaPath}`);
-                tempFilePath = await this.downloadFile(mediaPath);
-                media = MessageMedia.fromFilePath(tempFilePath);
+                // downloadFile now uses cache internally - no need to manage cleanup here for cached files
+                localFilePath = await this.downloadFile(mediaPath);
+                media = MessageMedia.fromFilePath(localFilePath);
             } else {
                 // Local file path
+                localFilePath = mediaPath;
                 media = MessageMedia.fromFilePath(mediaPath);
             }
 
             await this.client.sendMessage(chatId, media, { caption: content });
             console.log(`[WhatsAppManager] Media message sent successfully to ${to}`);
 
+            // Note: We don't clean up cached files here - they will be cleaned when:
+            // 1. Job completes (MessageProcessor should call clearFileCache)
+            // 2. Client disconnects
+            // 3. App closes
+
             return true;
         } catch (error) {
             console.error('[WhatsAppManager] Send media message error:', error);
             throw error;
-        } finally {
-            // Clean up temp file if it was created
-            if (tempFilePath) {
-                try {
-                    const fs = await import('fs');
-                    fs.unlinkSync(tempFilePath);
-                    console.log(`[WhatsAppManager] Cleaned up temp file: ${tempFilePath}`);
-                } catch (cleanupError) {
-                    console.warn(`[WhatsAppManager] Failed to clean up temp file: ${tempFilePath}`, cleanupError);
-                }
-            }
         }
     }
 
@@ -365,7 +510,7 @@ export class WhatsAppManager {
      * Broadcast status change to renderer
      */
     private broadcastStatus(status: string): void {
-        if (this.mainWindow) {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('whatsapp:status-change', status);
         }
     }

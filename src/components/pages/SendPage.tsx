@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
@@ -13,12 +13,12 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { FadeIn } from '@/components/ui/animations';
-import { Contact, Template, Quota, ContactGroup, AssetFile, MessageLog } from '@/lib/services/types';
+import { Contact, Template, Quota, ContactGroup, AssetFile } from '@/lib/services/types';
+import { preflightService } from '@/lib/services/PreflightService';
 import { JobProgressModal } from '@/components/ui/JobProgressModal';
 import { toast } from 'sonner';
 import {
@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 
 const PRESET_DELAYS = [1, 3, 5, 10, 15, 30, 60, 120, 300, 600, 900];
+
+type SendFlowState = 'idle' | 'validating' | 'ready' | 'sending' | 'done' | 'error';
 
 const formatDelayLabel = (seconds: number) => {
   if (seconds >= 60) {
@@ -77,7 +79,9 @@ function SendPageContent({
   formatFileSize,
   showProgressModal,
   setShowProgressModal,
-  activeJobId
+  activeJobId,
+  flowState,
+  validationErrors
 }: {
   contacts: Contact[];
   templates: Template[];
@@ -108,6 +112,8 @@ function SendPageContent({
   showProgressModal: boolean;
   setShowProgressModal: (show: boolean) => void;
   activeJobId: string | null;
+  flowState: SendFlowState;
+  validationErrors: string[];
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
@@ -312,7 +318,7 @@ function SendPageContent({
                                     </div>
                                   </div>
                                   {isSelected && (
-                                    <div className="flex-shrink-0">
+                                    <div className="shrink-0">
                                       <div className="h-4 w-4 rounded-full bg-primary flex items-center justify-center">
                                         <CheckCircle className="h-3 w-3 text-white" />
                                       </div>
@@ -516,12 +522,17 @@ function SendPageContent({
                     className="w-full"
                     size="lg"
                     onClick={handleStartCampaign}
-                    disabled={!canSend || isSending}
+                    disabled={!canSend || isSending || flowState === 'validating'}
                   >
                     {isSending ? (
                       <>
                         <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
                         {intl.formatMessage({ id: 'send.button.sending', defaultMessage: 'Sending...' })}
+                      </>
+                    ) : flowState === 'validating' ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                        Validating...
                       </>
                     ) : (
                       <>
@@ -531,7 +542,20 @@ function SendPageContent({
                     )}
                   </AnimatedButton>
 
-                  {!canSend && (
+                  {validationErrors.length > 0 && (
+                    <Alert variant="destructive" className="mt-3">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <ul className="list-disc pl-4">
+                          {validationErrors.map((err, idx) => (
+                            <li key={idx}>{err}</li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {!canSend && flowState !== 'validating' && validationErrors.length === 0 && (
                     <Alert className="mt-3">
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription>
@@ -614,7 +638,7 @@ function SendPageContent({
   );
 }
 
-export function SendPage({ userName }: { userName: string }) {
+export function SendPage() {
   const {
     contactService,
     templateService,
@@ -642,6 +666,11 @@ export function SendPage({ userName }: { userName: string }) {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [reservationId, setReservationId] = useState<string | null>(null);
+
+  // New State Machine
+  const [flowState, setFlowState] = useState<SendFlowState>('idle');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
   const intl = useIntl();
 
   const loadData = async () => {
@@ -672,9 +701,29 @@ export function SendPage({ userName }: { userName: string }) {
       console.error('Failed to load data:', err);
       const appError = handleServiceError(err, 'loadSendData');
       setError(appError.message);
+      setFlowState('error');
     } finally {
       setIsLoading(false);
+      // If no error, set state to ready (or idle if nothing selected)
+      if (!error) setFlowState('ready');
     }
+  };
+
+  // Effect to validate when template changes
+  useEffect(() => {
+    if (selectedTemplate) {
+      validateTemplateSync(selectedTemplate);
+    }
+  }, [selectedTemplate]);
+
+  const validateTemplateSync = async (templateId: string) => {
+    setFlowState('validating');
+    const isSynced = await preflightService.ensureTemplateSync(templateId);
+    if (!isSynced) {
+      toast.warning('Template might be out of sync. Please refresh.');
+      // We don't block yet, but we warn
+    }
+    setFlowState('ready');
   };
 
   const getTargetContacts = () => {
@@ -729,10 +778,41 @@ export function SendPage({ userName }: { userName: string }) {
 
     const targetContacts = getTargetContacts();
     const selectedTemplateData = getSelectedTemplate();
-    const selectedGroupData = getSelectedGroup();
 
     if (!selectedTemplateData) return;
 
+    // --- PRE-FLIGHT VALIDATION CALL ---
+    setFlowState('validating');
+    try {
+      const preflight = await preflightService.validateSendReadiness({
+        templateId: selectedTemplate,
+        assetIds: selectedAssets,
+        contactCount: targetContacts.length,
+        checkQuota: true
+      });
+
+      if (!preflight.isReady) {
+        setValidationErrors(preflight.errors.map(e => e.message));
+        toast.error('Validation failed: ' + preflight.errors[0].message);
+        setFlowState('ready'); // Back to ready state to let user fix
+        return;
+      }
+
+      // Additional: Ensure assets are ready (pre-download/check)
+      if (selectedAssets.length > 0) {
+        const assetsReady = await preflightService.ensureAssetsReady(selectedAssets);
+        if (!assetsReady) {
+          throw new Error('Some assets could not be prepared for sending. Please try again.');
+        }
+      }
+    } catch (valError) {
+      console.error('Preflight error:', valError);
+      toast.error('Pre-flight check failed: ' + (valError instanceof Error ? valError.message : 'Unknown error'));
+      setFlowState('error');
+      return;
+    }
+
+    setFlowState('sending');
     setIsSending(true);
     setSendResult(null);
 
@@ -793,8 +873,12 @@ export function SendPage({ userName }: { userName: string }) {
       const result = await window.electron.whatsapp.processJob(
         jobId,
         targetContacts,
-        selectedTemplateData,
-        assetPaths
+        {
+          template: selectedTemplateData,
+          assets: assetPaths,
+          mode: sendingMode,
+          delayRange: delayRange
+        }
       );
 
       if (!result.success) {
@@ -869,9 +953,7 @@ export function SendPage({ userName }: { userName: string }) {
           const currentUserId = await userContextManager.getCurrentMasterUserId();
           if (!currentUserId) return;
 
-          const targetContacts = getTargetContacts();
           const selectedTemplateData = getSelectedTemplate();
-          const selectedGroupData = getSelectedGroup();
 
           // Commit quota
           if (reservationId) {
@@ -887,7 +969,7 @@ export function SendPage({ userName }: { userName: string }) {
             updated_at: new Date().toISOString()
           });
 
-          // Create History Log
+          // Create History Log with individual message logs
           await historyService.createLog({
             user_id: currentUserId,
             master_user_id: currentUserId,
@@ -900,8 +982,8 @@ export function SendPage({ userName }: { userName: string }) {
             status: 'completed',
             delay_range: delayRange[0],
             metadata: {
-              // We can add detailed logs here if needed, but for now summary is enough
-              jobId: activeJobId
+              jobId: activeJobId,
+              logs: data.metadata?.logs || [] // Store individual message logs
             }
           });
 
@@ -993,6 +1075,8 @@ export function SendPage({ userName }: { userName: string }) {
       showProgressModal={showProgressModal}
       setShowProgressModal={setShowProgressModal}
       activeJobId={activeJobId}
+      flowState={flowState}
+      validationErrors={validationErrors}
     />
   );
 }

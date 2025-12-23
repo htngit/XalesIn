@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 export interface ParsedContact {
     name: string;
     phone: string;
-    group_id?: string;
+    group_name?: string;
     tags?: string[];
     notes?: string;
 }
@@ -69,12 +69,10 @@ export const parseContactsXLS = async (file: File): Promise<ParsedContact[]> => 
                         return {
                             name: String(row[0] || '').trim(),
                             phone: phone,
-                            // We'll map group names to IDs in the service or UI layer
-                            // For now we pass the group name if provided
                             group_name: String(row[2] || '').trim(),
                             tags: row[3] ? String(row[3]).split(',').map(t => t.trim()) : [],
                             notes: String(row[4] || '').trim()
-                        } as any; // Type assertion needed because we're adding temporary group_name
+                        };
                     });
 
                 resolve(parsedContacts);

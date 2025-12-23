@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, CreditCard, User, Bell, Shield, Database, Users } from 'lucide-react';
+import { ArrowLeft, CreditCard, User, Database, Users } from 'lucide-react';
 import { PaymentTab } from '@/components/settings/payment/PaymentTab';
 import { ProfileTab } from '@/components/settings/profile/ProfileTab';
 import { DatabaseTab } from '@/components/settings/database/DatabaseTab';
@@ -45,7 +45,7 @@ export function SettingsPage({ userName }: SettingsPageProps) {
 
         {/* Settings Tabs */}
         <Tabs defaultValue="payment" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 lg:w-auto lg:inline-grid mb-6">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-auto lg:inline-grid mb-6">
             <TabsTrigger value="payment" className="flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
               <span className="hidden sm:inline">
@@ -82,24 +82,6 @@ export function SettingsPage({ userName }: SettingsPageProps) {
                 <FormattedMessage id="settings.tab.team.short" defaultMessage="Team" />
               </span>
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <Bell className="h-4 w-4" />
-              <span className="hidden sm:inline">
-                <FormattedMessage id="settings.tab.notifications" defaultMessage="Notifications" />
-              </span>
-              <span className="sm:hidden">
-                <FormattedMessage id="settings.tab.notifications.short" defaultMessage="Alerts" />
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">
-                <FormattedMessage id="settings.tab.security" defaultMessage="Security" />
-              </span>
-              <span className="sm:hidden">
-                <FormattedMessage id="settings.tab.security.short" defaultMessage="Security" />
-              </span>
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="payment">
@@ -116,30 +98,6 @@ export function SettingsPage({ userName }: SettingsPageProps) {
 
           <TabsContent value="team">
             <TeamTab />
-          </TabsContent>
-
-          <TabsContent value="notifications">
-            <div className="text-center py-20 text-muted-foreground">
-              <Bell className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">
-                <FormattedMessage id="settings.notifications.title" defaultMessage="Notification Settings" />
-              </p>
-              <p className="text-sm">
-                <FormattedMessage id="common.status.coming_soon" defaultMessage="Coming soon..." />
-              </p>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="security">
-            <div className="text-center py-20 text-muted-foreground">
-              <Shield className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">
-                <FormattedMessage id="settings.security.title" defaultMessage="Security Settings" />
-              </p>
-              <p className="text-sm">
-                <FormattedMessage id="common.status.coming_soon" defaultMessage="Coming soon..." />
-              </p>
-            </div>
           </TabsContent>
         </Tabs>
       </div>
