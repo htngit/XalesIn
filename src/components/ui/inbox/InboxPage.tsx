@@ -6,7 +6,7 @@ import { useIntl } from 'react-intl';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { MessageService, GroupService, ContactService } from '@/lib/services';
+import { MessageService, ContactService, GroupService, type AssetFile } from '@/lib/services';
 import { ConversationSummary, Message, InboxFilters, ContactGroup, ContactWithGroup } from '@/lib/services/types';
 import { syncManager } from '@/lib/sync/SyncManager';
 import { ConversationList } from '@/components/ui/inbox/ConversationList';
@@ -138,32 +138,30 @@ export function InboxPage() {
     }, [messageService, loadConversations, loadMessages, selectedConversation]);
 
     // Send Message
-    const handleSendMessage = async (content: string) => {
+    const handleSendMessage = async (content: string, asset?: AssetFile) => {
         if (!selectedConversation) return;
 
         try {
-            // 1. Send via WhatsApp (Electron)
-            // Use type assertion to avoid TS errors
-            const electron = (window as any).electron;
-            if (!electron?.whatsapp?.sendMessage) {
-                throw new Error('WhatsApp service not available');
-            }
-
-            const result = await electron.whatsapp.sendMessage(
+            // 1. Send via WhatsApp
+            const assets = asset ? [asset.file_url || asset.url || ''] : undefined;
+            const result = await window.electron.whatsapp.sendMessage(
                 selectedConversation.contact_phone,
-                content
+                content,
+                assets
             );
 
             if (!result.success) {
                 throw new Error(result.error || 'Failed to send message');
             }
 
-            // 2. Save to local DB
+            // 2. Save to Database
             await messageService.createOutboundMessage({
-                contact_id: selectedConversation.contact_id || '',
                 contact_phone: selectedConversation.contact_phone,
                 contact_name: selectedConversation.contact_name,
-                content: content
+                content: content,
+                message_type: asset ? asset.category : 'text',
+                has_media: !!asset,
+                media_url: asset ? (asset.file_url || asset.url) : undefined
             });
 
             // 3. Refresh Messages and Conversation List
@@ -173,7 +171,7 @@ export function InboxPage() {
             ]);
 
         } catch (error) {
-            console.error('Failed to send message', error);
+            console.error('Failed to send message:', error);
             toast.error(error instanceof Error ? error.message : 'Failed to send message');
         }
     };

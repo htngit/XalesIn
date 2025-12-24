@@ -357,6 +357,7 @@ export class MessageService {
         activity_log_id?: string;
         has_media?: boolean;
         media_url?: string;
+        message_type?: string;
     }): Promise<Message> {
         return this.createMessage({
             contact_id: data.contact_id,
@@ -364,7 +365,7 @@ export class MessageService {
             contact_name: data.contact_name,
             direction: 'outbound',
             content: data.content,
-            message_type: 'text',
+            message_type: data.message_type || 'text',
             has_media: data.has_media || false,
             media_url: data.media_url,
             status: 'sent',
