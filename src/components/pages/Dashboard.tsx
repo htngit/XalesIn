@@ -399,9 +399,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
           `}>
           <div className="h-full flex flex-col">
             <div className="p-6 hidden lg:flex items-center gap-2 border-b">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Send className="w-5 h-5 text-white" />
-              </div>
+              <img src="/icon.png" alt="App Icon" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">
                 <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
               </span>
@@ -460,7 +458,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                   <FormattedMessage id="dashboard.overview.title" defaultMessage="Dashboard Overview" />
                 </h1>
                 <p className="text-muted-foreground">
-                  <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back! Here's what's happening with your campaigns." />
+                  <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back!" />
                 </p>
               </div>
 
