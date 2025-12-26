@@ -232,5 +232,11 @@
     "assets.toast.delete_success.desc": "File berhasil dihapus.",
     "assets.toast.delete_failed": "Gagal Menghapus",
     "send.result.success": "Berhasil:",
-    "send.result.failed": "Gagal:"
+    "send.result.failed": "Gagal:",
+    "inbox.title": "Kotak Masuk",
+    "inbox.checkingConnection": "Memeriksa koneksi WhatsApp...",
+    "inbox.connectionWarning.title": "WhatsApp Tidak Terhubung",
+    "inbox.connectionWarning.description": "Anda perlu menghubungkan WhatsApp terlebih dahulu sebelum mengakses Kotak Masuk. Silakan hubungkan akun WhatsApp Anda dari Dasbor.",
+    "inbox.connectionWarning.button": "Ke Dasbor",
+    "inbox.selectConversation": "Pilih percakapan untuk mulai mengobrol"
 }

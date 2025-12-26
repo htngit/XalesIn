@@ -2,10 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useIntl } from 'react-intl';
+import { useIntl, FormattedMessage } from 'react-intl';
 import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MessageService, ContactService, GroupService, type AssetFile } from '@/lib/services';
 import { ConversationSummary, Message, InboxFilters, ContactGroup, ContactWithGroup } from '@/lib/services/types';
 import { syncManager } from '@/lib/sync/SyncManager';
@@ -45,6 +54,49 @@ export function InboxPage() {
     const [tags, setTags] = useState<string[]>([]);
     const [filters, setFilters] = useState<InboxFilters>({});
     const [showFilters, setShowFilters] = useState(false);
+
+    // WhatsApp connection warning state
+    const [showConnectionWarning, setShowConnectionWarning] = useState(false);
+    const [isCheckingConnection, setIsCheckingConnection] = useState(true);
+
+    // Check WhatsApp connection status on mount
+    useEffect(() => {
+        const checkWhatsAppConnection = async () => {
+            setIsCheckingConnection(true);
+            try {
+                const result = await window.electron.whatsapp.getStatus();
+                if (!result.ready) {
+                    setShowConnectionWarning(true);
+                }
+            } catch (err) {
+                console.error('[Inbox] Failed to check WhatsApp status:', err);
+                setShowConnectionWarning(true);
+            } finally {
+                setIsCheckingConnection(false);
+            }
+        };
+
+        checkWhatsAppConnection();
+
+        // Also listen for connection status changes
+        const unsubscribeStatus = window.electron.whatsapp.onStatusChange((newStatus: string) => {
+            if (newStatus === 'disconnected') {
+                setShowConnectionWarning(true);
+            } else if (newStatus === 'ready') {
+                setShowConnectionWarning(false);
+            }
+        });
+
+        return () => {
+            unsubscribeStatus();
+        };
+    }, []);
+
+    // Handle warning dialog close - navigate back to dashboard
+    const handleWarningClose = () => {
+        setShowConnectionWarning(false);
+        navigate('/');
+    };
 
     // Load conversations
     const loadConversations = useCallback(async () => {
@@ -254,115 +306,160 @@ export function InboxPage() {
         setIsNewChatOpen(false);
     };
 
+    // Show loading state while checking connection
+    if (isCheckingConnection) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-background">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">
+                        <FormattedMessage id="inbox.checkingConnection" defaultMessage="Checking WhatsApp connection..." />
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex h-screen bg-background">
-            {/* Sidebar: Conversation List */}
-            <div className={cn(
-                "flex flex-col border-r border-border flex-shrink-0",
-                "w-full md:w-[380px] lg:w-[420px]",
-                selectedConversation ? "hidden md:flex" : "flex"
-            )}>
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-border">
-                    <div className="flex items-center gap-3">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(-1)}
-                            className="h-8 w-8"
+        <>
+            {/* WhatsApp Connection Warning Dialog */}
+            <AlertDialog open={showConnectionWarning} onOpenChange={() => { }}>
+                <AlertDialogContent className="max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                            <AlertTriangle className="h-5 w-5" />
+                            <FormattedMessage
+                                id="inbox.connectionWarning.title"
+                                defaultMessage="WhatsApp Not Connected"
+                            />
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-left">
+                            <FormattedMessage
+                                id="inbox.connectionWarning.description"
+                                defaultMessage="You need to connect to WhatsApp first before accessing the Inbox. Please connect your WhatsApp account from the Dashboard."
+                            />
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={handleWarningClose} className="w-full">
+                            <FormattedMessage
+                                id="inbox.connectionWarning.button"
+                                defaultMessage="Go to Dashboard"
+                            />
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <div className="flex h-screen bg-background">
+                {/* Sidebar: Conversation List */}
+                <div className={cn(
+                    "flex flex-col border-r border-border flex-shrink-0",
+                    "w-full md:w-[380px] lg:w-[420px]",
+                    selectedConversation ? "hidden md:flex" : "flex"
+                )}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b border-border">
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(-1)}
+                                className="h-8 w-8"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                            </Button>
+                            <h1 className="text-xl font-semibold">
+                                {intl.formatMessage({ id: 'inbox.title', defaultMessage: 'Inbox' })}
+                            </h1>
+                        </div>
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={cn(
+                                "p-2 rounded-lg transition-colors",
+                                showFilters ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                            )}
                         >
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                        <h1 className="text-xl font-semibold">
-                            {intl.formatMessage({ id: 'inbox.title', defaultMessage: 'Inbox' })}
-                        </h1>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                            </svg>
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={cn(
-                            "p-2 rounded-lg transition-colors",
-                            showFilters ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                        )}
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                        </svg>
-                    </button>
+
+                    {/* Filters Panel */}
+                    {showFilters && (
+                        <InboxFiltersPanel
+                            groups={groups}
+                            tags={tags}
+                            filters={filters}
+                            onFilterChange={handleFilterChange}
+                        />
+                    )}
+
+                    {/* Conversation List */}
+                    <ConversationList
+                        conversations={conversations}
+                        selectedPhone={selectedConversation?.contact_phone}
+                        onSelect={handleSelectConversation}
+                        onNewChat={handleNewChat}
+                        onDeleteChats={handleDeleteChats}
+                        isLoading={isLoading}
+                    />
                 </div>
 
-                {/* Filters Panel */}
-                {showFilters && (
-                    <InboxFiltersPanel
-                        groups={groups}
-                        tags={tags}
-                        filters={filters}
-                        onFilterChange={handleFilterChange}
-                    />
-                )}
+                {/* Main: Chat Window */}
+                <div className={cn(
+                    "flex-1 flex flex-col overflow-hidden",
+                    !selectedConversation ? "hidden md:flex" : "flex"
+                )}>
+                    {selectedConversation ? (
+                        <>
+                            <ChatHeader
+                                conversation={selectedConversation}
+                                availableTags={tags}
+                                onUpdateTags={handleUpdateTags}
+                                onBack={() => setSelectedConversation(null)}
+                            />
+                            <ChatWindow
+                                messages={messages}
+                                isLoading={isLoadingMessages}
+                                onSendMessage={handleSendMessage}
+                            />
+                        </>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                            <div className="text-center">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="64"
+                                    height="64"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="mx-auto mb-4 opacity-50"
+                                >
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                                <p className="text-lg">
+                                    {intl.formatMessage({
+                                        id: 'inbox.selectConversation',
+                                        defaultMessage: 'Select a conversation to start chatting'
+                                    })}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
-                {/* Conversation List */}
-                <ConversationList
-                    conversations={conversations}
-                    selectedPhone={selectedConversation?.contact_phone}
-                    onSelect={handleSelectConversation}
-                    onNewChat={handleNewChat}
-                    onDeleteChats={handleDeleteChats}
-                    isLoading={isLoading}
+                <NewChatDialog
+                    open={isNewChatOpen}
+                    onOpenChange={setIsNewChatOpen}
+                    onSelectContact={handleSelectContact}
                 />
             </div>
-
-            {/* Main: Chat Window */}
-            <div className={cn(
-                "flex-1 flex flex-col overflow-hidden",
-                !selectedConversation ? "hidden md:flex" : "flex"
-            )}>
-                {selectedConversation ? (
-                    <>
-                        <ChatHeader
-                            conversation={selectedConversation}
-                            availableTags={tags}
-                            onUpdateTags={handleUpdateTags}
-                            onBack={() => setSelectedConversation(null)}
-                        />
-                        <ChatWindow
-                            messages={messages}
-                            isLoading={isLoadingMessages}
-                            onSendMessage={handleSendMessage}
-                        />
-                    </>
-                ) : (
-                    <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="64"
-                                height="64"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="mx-auto mb-4 opacity-50"
-                            >
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                            </svg>
-                            <p className="text-lg">
-                                {intl.formatMessage({
-                                    id: 'inbox.selectConversation',
-                                    defaultMessage: 'Select a conversation to start chatting'
-                                })}
-                            </p>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <NewChatDialog
-                open={isNewChatOpen}
-                onOpenChange={setIsNewChatOpen}
-                onSelectContact={handleSelectContact}
-            />
-        </div>
+        </>
     );
 }

@@ -30,6 +30,29 @@ import {
 } from 'lucide-react';
 import { useIntl, FormattedMessage } from 'react-intl';
 
+// Import app icon as module to ensure proper path resolution in Electron production build
+import appIconPng from '/icon.png';
+
+// Icon map to prevent tree-shaking issues in production build
+const IconMap = {
+  inbox: Inbox,
+  contacts: Users,
+  groups: Users,
+  templates: MessageSquare,
+  assets: File,
+  send: Send,
+  history: Clock,
+  settings: Settings,
+} as const;
+
+type IconMapKey = keyof typeof IconMap;
+
+// Helper component for rendering icons safely
+function MenuIcon({ iconKey, className }: { iconKey: IconMapKey; className?: string }) {
+  const IconComponent = IconMap[iconKey];
+  return IconComponent ? <IconComponent className={className} /> : null;
+}
+
 interface DashboardProps {
   userName: string;
   onLogout: () => void;
@@ -323,53 +346,45 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   }
 
   // Main dashboard UI (ready)
-  const menuItems = [
+  const menuItems: { id: IconMapKey; label: string; description: string }[] = [
     {
       id: 'inbox',
       label: intl.formatMessage({ id: 'dashboard.menu.inbox', defaultMessage: 'Inbox' }),
-      icon: Inbox,
       description: intl.formatMessage({ id: 'dashboard.menu.inbox.desc', defaultMessage: 'View incoming messages' })
     },
     {
       id: 'contacts',
       label: intl.formatMessage({ id: 'dashboard.menu.contacts', defaultMessage: 'Contacts' }),
-      icon: Users,
       description: intl.formatMessage({ id: 'dashboard.menu.contacts.desc', defaultMessage: 'Manage your contacts' })
     },
     {
       id: 'groups',
       label: intl.formatMessage({ id: 'dashboard.menu.groups', defaultMessage: 'Groups' }),
-      icon: Users,
       description: intl.formatMessage({ id: 'dashboard.menu.groups.desc', defaultMessage: 'Manage contact groups' })
     },
     {
       id: 'templates',
       label: intl.formatMessage({ id: 'dashboard.menu.templates', defaultMessage: 'Templates' }),
-      icon: MessageSquare,
       description: intl.formatMessage({ id: 'dashboard.menu.templates.desc', defaultMessage: 'Create and manage templates' })
     },
     {
       id: 'assets',
       label: intl.formatMessage({ id: 'dashboard.menu.assets', defaultMessage: 'Asset Files' }),
-      icon: File,
       description: intl.formatMessage({ id: 'dashboard.menu.assets.desc', defaultMessage: 'Upload and manage asset files' })
     },
     {
       id: 'send',
       label: intl.formatMessage({ id: 'dashboard.menu.send', defaultMessage: 'Send Messages' }),
-      icon: Send,
       description: intl.formatMessage({ id: 'dashboard.menu.send.desc', defaultMessage: 'Configure and send messages' })
     },
     {
       id: 'history',
       label: intl.formatMessage({ id: 'dashboard.menu.history', defaultMessage: 'History' }),
-      icon: Clock,
       description: intl.formatMessage({ id: 'dashboard.menu.history.desc', defaultMessage: 'View activity history' })
     },
     {
       id: 'settings',
       label: intl.formatMessage({ id: 'dashboard.menu.settings', defaultMessage: 'Settings' }),
-      icon: Settings,
       description: intl.formatMessage({ id: 'dashboard.menu.settings.desc', defaultMessage: 'App settings' })
     }
   ];
@@ -399,7 +414,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
           `}>
           <div className="h-full flex flex-col">
             <div className="p-6 hidden lg:flex items-center gap-2 border-b">
-              <img src="/icon.png" alt="App Icon" className="w-8 h-8 rounded-lg" />
+              <img src={appIconPng} alt="App Icon" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">
                 <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
               </span>
@@ -418,7 +433,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 </div>
                 {menuItems.map((item) => (
                   <Button key={item.id} variant="ghost" className="w-full justify-start gap-3" onClick={() => handleMenuClick(item.id)}>
-                    <item.icon className="h-4 w-4" />
+                    <MenuIcon iconKey={item.id} className="h-4 w-4" />
                     {item.label}
                   </Button>
                 ))}
@@ -622,7 +637,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                   {menuItems.slice(0, 4).map((item) => (
                     <Button key={item.id} variant="outline" className="h-auto py-4 justify-start gap-4" onClick={() => handleMenuClick(item.id)}>
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <item.icon className="h-5 w-5 text-primary" />
+                        <MenuIcon iconKey={item.id} className="h-5 w-5 text-primary" />
                       </div>
                       <div className="text-left">
                         <div className="font-semibold">{item.label}</div>

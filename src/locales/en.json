@@ -246,5 +246,11 @@
   "history.empty.search.send_messages": "Send Messages",
   "history.empty.all.help": "You haven't sent any messages yet. Start by creating a campaign and sending your first messages.",
   "history.empty.all.send_first": "Send Your First Messages",
-  "history.loading": "Loading message history..."
+  "history.loading": "Loading message history...",
+  "inbox.title": "Inbox",
+  "inbox.checkingConnection": "Checking WhatsApp connection...",
+  "inbox.connectionWarning.title": "WhatsApp Not Connected",
+  "inbox.connectionWarning.description": "You need to connect to WhatsApp first before accessing the Inbox. Please connect your WhatsApp account from the Dashboard.",
+  "inbox.connectionWarning.button": "Go to Dashboard",
+  "inbox.selectConversation": "Select a conversation to start chatting"
 }
