@@ -221,7 +221,7 @@ export function LoginPage({ onLoginSuccess, initialView = 'login' }: LoginPagePr
       <BubbleBackground interactive={true} className="absolute inset-0" />
 
       <div className="absolute top-4 right-4 z-50">
-        <LanguageSwitcher className="text-white hover:bg-white/20" />
+        <LanguageSwitcher showLabel={true} className="bg-transparent border-white/20 text-white hover:bg-white/20" />
       </div>
 
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
@@ -238,9 +238,11 @@ export function LoginPage({ onLoginSuccess, initialView = 'login' }: LoginPagePr
               <Card className="backdrop-blur-xl bg-white/20 border-white/20 shadow-2xl">
                 <CardHeader className="text-center space-y-2">
                   <div className="flex justify-center mb-4">
-                    <div className="p-3 bg-blue-500/20 rounded-full backdrop-blur-sm">
-                      <Lock className="h-8 w-8 text-white" />
-                    </div>
+                    <img
+                      src="icon.png"
+                      alt="Xender-In Logo"
+                      className="h-20 w-20 object-contain drop-shadow-lg"
+                    />
                   </div>
                   <CardTitle className="text-3xl font-bold text-white">
                     <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />

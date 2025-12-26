@@ -40,7 +40,7 @@ export function SettingsPage({ userName }: SettingsPageProps) {
               </p>
             </div>
           </div>
-          <LanguageSwitcher />
+          <LanguageSwitcher showLabel={true} />
         </div>
 
         {/* Settings Tabs */}
