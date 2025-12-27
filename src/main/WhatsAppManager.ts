@@ -98,9 +98,7 @@ export class WhatsAppManager {
 
             this.client = new Client({
                 authStrategy: new LocalAuth({
-                    dataPath: app.isPackaged
-                        ? path.join(app.getPath('userData'), '.wwebjs_auth')
-                        : '.wwebjs_auth'
+                    dataPath: this.getSessionDataPath()
                 }),
                 puppeteer: puppeteerConfig,
                 // Fix for "sendIq called before startComms" and other version incompatibility errors
@@ -262,6 +260,42 @@ export class WhatsAppManager {
     }
 
     /**
+     * Get session data path
+     */
+    private getSessionDataPath(): string {
+        return app.isPackaged
+            ? path.join(app.getPath('userData'), '.wwebjs_auth')
+            : '.wwebjs_auth';
+    }
+
+    /**
+     * Delete session data directory
+     */
+    private deleteSessionData(): void {
+        const sessionPath = this.getSessionDataPath();
+        const authPath = path.resolve(sessionPath, 'session'); // LocalAuth creates a 'session' subdir
+
+        console.log(`[WhatsAppManager] Deleting session data at: ${sessionPath}`);
+
+        try {
+            // Delete the specific session folder created by LocalAuth
+            // Note: LocalAuth uses clientId 'session' by default if not specified
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                console.log('[WhatsAppManager] Session directory deleted successfully');
+            } else if (fs.existsSync(sessionPath)) {
+                // Fallback: try to delete the root auth folder if the specific session folder isn't found
+                // This might be safer to avoid deleting other sessions if we had multiple
+                // But since we use default, let's just clean up what we can.
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+                console.log('[WhatsAppManager] Auth directory deleted successfully');
+            }
+        } catch (error) {
+            console.error('[WhatsAppManager] Failed to delete session data:', error);
+        }
+    }
+
+    /**
      * Disconnect from WhatsApp
      */
     async disconnect(): Promise<void> {
@@ -269,6 +303,16 @@ export class WhatsAppManager {
             console.log('[WhatsAppManager] Disconnecting...');
 
             if (this.client) {
+                // Try to logout nicely first to notify WhatsApp server
+                if (this.status === 'ready') {
+                    try {
+                        await this.client.logout();
+                        console.log('[WhatsAppManager] Logged out from WhatsApp');
+                    } catch (logoutError) {
+                        console.warn('[WhatsAppManager] Logout failed (ignoring):', logoutError);
+                    }
+                }
+
                 await this.client.destroy();
                 this.client = null;
             }
@@ -276,8 +320,11 @@ export class WhatsAppManager {
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');
 
-            // Clear file cache on disconnect
+            // Clear file cache
             this.clearFileCache();
+
+            // critical: delete session files to force re-scan
+            this.deleteSessionData();
 
             // Re-initialize client so it can be connected again
             this.initializeClient();

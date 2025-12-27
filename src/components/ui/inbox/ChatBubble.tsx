@@ -12,7 +12,9 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
     // Format timestamp
     const formatTime = (isoString: string) => {
-        return new Date(isoString).toLocaleTimeString([], {
+        const date = new Date(isoString);
+        const validDate = isNaN(date.getTime()) ? new Date() : date;
+        return validDate.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
         });

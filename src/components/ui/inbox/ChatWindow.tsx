@@ -31,7 +31,9 @@ export function ChatWindow({ messages, isLoading, onSendMessage }: ChatWindowPro
         let currentDate = '';
 
         for (const message of messages) {
-            const msgDate = new Date(message.sent_at).toLocaleDateString();
+            const date = new Date(message.sent_at);
+            const validDate = isNaN(date.getTime()) ? new Date() : date;
+            const msgDate = validDate.toLocaleDateString();
 
             if (msgDate !== currentDate) {
                 currentDate = msgDate;
@@ -47,17 +49,18 @@ export function ChatWindow({ messages, isLoading, onSendMessage }: ChatWindowPro
     // Format date header
     const formatDateHeader = (dateString: string) => {
         const date = new Date(dateString);
+        const validDate = isNaN(date.getTime()) ? new Date() : date;
         const now = new Date();
-        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.floor((now.getTime() - validDate.getTime()) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 0) {
             return intl.formatMessage({ id: 'inbox.today', defaultMessage: 'Today' });
         } else if (diffDays === 1) {
             return intl.formatMessage({ id: 'inbox.yesterday', defaultMessage: 'Yesterday' });
         } else if (diffDays < 7) {
-            return date.toLocaleDateString([], { weekday: 'long' });
+            return validDate.toLocaleDateString([], { weekday: 'long' });
         } else {
-            return date.toLocaleDateString([], {
+            return validDate.toLocaleDateString([], {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'

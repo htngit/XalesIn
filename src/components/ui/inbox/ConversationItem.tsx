@@ -45,17 +45,18 @@ export function ConversationItem({
     // Format timestamp
     const formatTime = (isoString: string) => {
         const date = new Date(isoString);
+        const validDate = isNaN(date.getTime()) ? new Date() : date;
         const now = new Date();
-        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.floor((now.getTime() - validDate.getTime()) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 0) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return validDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         } else if (diffDays === 1) {
             return 'Yesterday';
         } else if (diffDays < 7) {
-            return date.toLocaleDateString([], { weekday: 'short' });
+            return validDate.toLocaleDateString([], { weekday: 'short' });
         } else {
-            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            return validDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
         }
     };
 
