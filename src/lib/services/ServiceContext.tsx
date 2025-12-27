@@ -35,6 +35,9 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    // If we think we're ready, do nothing (wait for error handler to reset us if wrong)
+    if (isReady) return;
+
     // Check if services are already initialized
     if (serviceManager.isInitialized()) {
       setIsReady(true);
@@ -51,9 +54,9 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
       }
     }, 100); // Check every 100ms
 
-    // Cleanup on unmount
+    // Cleanup on unmount or when dependencies change
     return () => clearInterval(checkInterval);
-  }, []);
+  }, [isReady]);
 
   // Show loading state while waiting for services
   if (!isReady) {

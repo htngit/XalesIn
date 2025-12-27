@@ -75,10 +75,7 @@ function HistoryPageContent({
                 </div>
               </div>
             </div>
-            <Button variant="outline" onClick={() => navigate('/campaign-history')}>
-              <MessageSquare className="h-4 w-4 mr-2" />
-              {intl.formatMessage({ id: 'history.button.view_activity', defaultMessage: 'View Campaign Logs' })}
-            </Button>
+
           </div>
 
           {/* Stats Cards */}

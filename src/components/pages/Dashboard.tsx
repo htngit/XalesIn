@@ -53,17 +53,11 @@ function MenuIcon({ iconKey, className }: { iconKey: IconMapKey; className?: str
   return IconComponent ? <IconComponent className={className} /> : null;
 }
 
+
+
 interface DashboardProps {
   userName: string;
   onLogout: () => void;
-}
-
-interface Activity {
-  id: string;
-  type: 'send' | 'template' | 'contact';
-  description: string;
-  time: string;
-  status: 'success' | 'partial' | 'pending' | 'failed';
 }
 
 export function Dashboard({ userName, onLogout }: DashboardProps) {
@@ -88,19 +82,15 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   });
 
 
-  // Recent activity fetched from local service
-  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
-
   // Subscriptions refs
   const quotaSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const paymentSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
-  const historySubscriptionRef = useRef<(() => void) | null>(null);
 
   // Guard against double init
   const initializedRef = useRef(false);
 
   // Get services from context
-  const { authService, quotaService, paymentService, historyService } = useServices();
+  const { authService, quotaService, paymentService } = useServices();
 
   // ---------------------------------------------------------------------
   // Initialization logic (runs once when user info is ready)
@@ -178,9 +168,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       }
 
       // Parallel fetch for efficiency - Offline First approach
-      const [currentQuota, recentLogs, contactStats, templateStats] = await Promise.all([
+      const [currentQuota, contactStats, templateStats] = await Promise.all([
         quotaService.getQuota(user.id),
-        serviceManager.getHistoryService().getRecentActivity(5),
         serviceManager.getContactService().getAllContacts(),
         serviceManager.getTemplateService().getTemplates()
       ]);
@@ -190,8 +179,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         setupQuotaSubscription(currentQuota.user_id);
       }
 
-      setupHistorySubscription();
-
       // Update stats
       setStats({
         totalContacts: contactStats.length,
@@ -200,16 +187,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         quotaRemaining: currentQuota?.remaining || 0,
         quotaLimit: currentQuota?.messages_limit || 0
       });
-
-      // Map logs to activity
-      const activities: Activity[] = recentLogs.map(log => ({
-        id: log.id,
-        type: 'send', // Simplified for now
-        description: log.template_name || intl.formatMessage({ id: 'dashboard.activity.campaign', defaultMessage: 'Message Campaign' }),
-        time: new Date(log.created_at).toLocaleDateString(intl.locale),
-        status: log.status === 'completed' ? 'success' : log.status === 'failed' ? 'failed' : 'pending'
-      }));
-      setRecentActivity(activities);
 
     } catch (e) {
       console.error('Error initializing user data:', e);
@@ -249,31 +226,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
   };
 
-  const setupHistorySubscription = () => {
-    if (historySubscriptionRef.current) {
-      historySubscriptionRef.current();
-    }
 
-    // Subscribe to local history updates
-    const unsubscribe = historyService.subscribeToLocalUpdates((log) => {
-      // Refresh recent activity when a log is added/updated
-      // Only process if it's a message campaign (has template_id)
-      if (log.template_id) {
-        historyService.getRecentActivity(5).then(logs => {
-          const activities: Activity[] = logs.map(log => ({
-            id: log.id,
-            type: 'send', // Simplified for now
-            description: log.template_name || intl.formatMessage({ id: 'dashboard.activity.campaign', defaultMessage: 'Message Campaign' }),
-            time: new Date(log.created_at).toLocaleDateString(intl.locale),
-            status: log.status === 'completed' ? 'success' : log.status === 'failed' ? 'failed' : 'pending'
-          }));
-          setRecentActivity(activities);
-        });
-      }
-    });
-
-    historySubscriptionRef.current = unsubscribe;
-  };
 
   const cleanupSubscriptions = () => {
     if (quotaSubscriptionRef.current) {
@@ -281,9 +234,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
     if (paymentSubscriptionRef.current) {
       paymentSubscriptionRef.current.unsubscribe();
-    }
-    if (historySubscriptionRef.current) {
-      historySubscriptionRef.current();
     }
   };
 
@@ -319,6 +269,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
     return value.toLocaleString();
   };
+
+
 
   // ---------------------------------------------------------------------
   // Render based on appState
@@ -561,93 +513,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
               </div>
             </Stagger>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-              {/* Recent Activity */}
-              <Card className="col-span-4">
-                <CardHeader>
-                  <CardTitle>
-                    <FormattedMessage id="dashboard.activity.title" defaultMessage="Recent Activity" />
-                  </CardTitle>
-                  <CardDescription>
-                    <FormattedMessage id="dashboard.activity.subtitle" defaultMessage="Your latest campaign and message activities" />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-8">
-                    {appState === 'loading' ? (
-                      // Skeleton Activity
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex items-center">
-                          <Skeleton className="h-9 w-9 rounded-full" />
-                          <div className="ml-4 space-y-1">
-                            <Skeleton className="h-4 w-48" />
-                            <Skeleton className="h-3 w-24" />
-                          </div>
-                          <div className="ml-auto">
-                            <Skeleton className="h-6 w-16 rounded-full" />
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      recentActivity.map((activity) => (
-                        <div key={activity.id} className="flex items-center">
-                          <div className={`
-                                w-9 h-9 rounded-full flex items-center justify-center border
-                                ${activity.type === 'send' ? 'bg-blue-50 border-blue-200 text-blue-600' :
-                              activity.type === 'template' ? 'bg-purple-50 border-purple-200 text-purple-600' :
-                                'bg-green-50 border-green-200 text-green-600'}
-                              `}>
-                            {activity.type === 'send' ? <Send className="h-4 w-4" /> :
-                              activity.type === 'template' ? <MessageSquare className="h-4 w-4" /> :
-                                <Users className="h-4 w-4" />}
-                          </div>
-                          <div className="ml-4 space-y-1">
-                            <p className="text-sm font-medium leading-none">{activity.description}</p>
-                            <p className="text-sm text-muted-foreground">{activity.time}</p>
-                          </div>
-                          <div className="ml-auto font-medium">
-                            {activity.status === 'success' ? (
-                              <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-                                <FormattedMessage id="common.status.success" defaultMessage="Success" />
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary">
-                                <FormattedMessage id="common.status.pending" defaultMessage="Pending" />
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Quick Actions */}
-              <Card className="col-span-3">
-                <CardHeader>
-                  <CardTitle>
-                    <FormattedMessage id="dashboard.quick_actions.title" defaultMessage="Quick Actions" />
-                  </CardTitle>
-                  <CardDescription>
-                    <FormattedMessage id="dashboard.quick_actions.subtitle" defaultMessage="Common tasks and shortcuts" />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                  {menuItems.slice(0, 4).map((item) => (
-                    <Button key={item.id} variant="outline" className="h-auto py-4 justify-start gap-4" onClick={() => handleMenuClick(item.id)}>
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <MenuIcon iconKey={item.id} className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="text-left">
-                        <div className="font-semibold">{item.label}</div>
-                        <div className="text-xs text-muted-foreground">{item.description}</div>
-                      </div>
-                    </Button>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </main>
       </div>

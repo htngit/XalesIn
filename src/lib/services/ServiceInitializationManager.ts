@@ -41,6 +41,16 @@ export class ServiceInitializationManager {
   }
 
   public static getInstance(): ServiceInitializationManager {
+    // Development-only persistence to handle HMR
+    if (process.env.NODE_ENV === 'development') {
+      const globalKey = '__ServiceInitializationManagerInstance__';
+      const globalScope = globalThis as any;
+      if (!globalScope[globalKey]) {
+        globalScope[globalKey] = new ServiceInitializationManager();
+      }
+      return globalScope[globalKey];
+    }
+
     if (!ServiceInitializationManager.instance) {
       ServiceInitializationManager.instance = new ServiceInitializationManager();
     }

@@ -14,7 +14,7 @@ import { TemplatesPage } from '@/components/pages/TemplatesPage';
 import { AssetPage } from '@/components/pages/AssetPage';
 import { SendPage } from '@/components/pages/SendPage';
 import { HistoryPage } from '@/components/pages/HistoryPage';
-import { CampaignHistoryPage } from '@/components/pages/CampaignHistoryPage';
+
 import { GroupPage } from '@/components/pages/GroupPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { InboxPage } from '@/components/pages/InboxPage';
@@ -132,14 +132,7 @@ const ProtectedRoutes = ({
           </ServiceProvider>
         }
       />
-      <Route
-        path="/campaign-history"
-        element={
-          <ServiceProvider>
-            <CampaignHistoryPage />
-          </ServiceProvider>
-        }
-      />
+
       <Route
         path="/groups"
         element={
