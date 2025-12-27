@@ -289,6 +289,27 @@ class WhatsAppManager {
     }
   }
   /**
+   * Check if a local session exists
+   */
+  hasExistingSession() {
+    const sessionPath = this.getSessionDataPath();
+    const authPath = path.resolve(sessionPath, "session");
+    try {
+      if (fs.existsSync(authPath)) {
+        const files = fs.readdirSync(authPath);
+        return files.length > 0;
+      }
+      if (fs.existsSync(sessionPath)) {
+        const files = fs.readdirSync(sessionPath);
+        return files.length > 0;
+      }
+      return false;
+    } catch (error) {
+      console.error("[WhatsAppManager] Error checking session existence:", error);
+      return false;
+    }
+  }
+  /**
    * Format phone number to WhatsApp ID format
    * Handles:
    * - Removing non-numeric characters
@@ -967,11 +988,15 @@ class StatusWorker {
       this.mainWindow.webContents.send("whatsapp:status-change", status);
     }
     if (status === "disconnected") {
-      console.log("[StatusWorker] Detected disconnection, attempting reconnect...");
-      try {
-        await this.whatsappManager.connect();
-      } catch (err) {
-        console.error("[StatusWorker] Reconnect failed:", err);
+      if (this.whatsappManager.hasExistingSession()) {
+        console.log("[StatusWorker] Detected disconnection with existing session, attempting reconnect...");
+        try {
+          await this.whatsappManager.connect();
+        } catch (err) {
+          console.error("[StatusWorker] Reconnect failed:", err);
+        }
+      } else {
+        console.debug("[StatusWorker] Disconnected, but no session found. Skipping auto-reconnect.");
       }
     }
   }

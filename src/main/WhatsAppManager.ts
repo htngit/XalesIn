@@ -337,6 +337,31 @@ export class WhatsAppManager {
     }
 
     /**
+     * Check if a local session exists
+     */
+    hasExistingSession(): boolean {
+        const sessionPath = this.getSessionDataPath();
+        const authPath = path.resolve(sessionPath, 'session');
+
+        // Check if session directory exists and is not empty
+        try {
+            if (fs.existsSync(authPath)) {
+                const files = fs.readdirSync(authPath);
+                return files.length > 0;
+            }
+            if (fs.existsSync(sessionPath)) {
+                // Fallback check for root folder (though LocalAuth usually makes a subdir)
+                const files = fs.readdirSync(sessionPath);
+                return files.length > 0;
+            }
+            return false;
+        } catch (error) {
+            console.error('[WhatsAppManager] Error checking session existence:', error);
+            return false;
+        }
+    }
+
+    /**
      * Format phone number to WhatsApp ID format
      * Handles:
      * - Removing non-numeric characters
