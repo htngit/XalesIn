@@ -5,8 +5,7 @@ import {
     Message,
     Template,
     AssetFile,
-    ActivityLog,
-    User
+    ActivityLog
 } from './types';
 
 export type ActivityType =
@@ -128,7 +127,7 @@ export class ActivityService {
 
     // --- Mappers ---
 
-    private mapContactToActivity(contact: any): DashboardActivity {
+    private mapContactToActivity(contact: Contact): DashboardActivity {
         return {
             id: contact.id,
             type: 'contact',
@@ -139,7 +138,7 @@ export class ActivityService {
         };
     }
 
-    private mapMessageToActivity(message: any): DashboardActivity {
+    private mapMessageToActivity(message: Message): DashboardActivity {
         const isInbox = message.direction === 'inbound';
         return {
             id: message.id,
@@ -151,7 +150,7 @@ export class ActivityService {
         };
     }
 
-    private mapTemplateToActivity(template: any): DashboardActivity {
+    private mapTemplateToActivity(template: Template): DashboardActivity {
         const isDeleted = template._deleted;
         return {
             id: template.id,
@@ -163,7 +162,7 @@ export class ActivityService {
         };
     }
 
-    private mapAssetToActivity(asset: any): DashboardActivity {
+    private mapAssetToActivity(asset: AssetFile): DashboardActivity {
         const assetType = asset.type || asset.file_type || 'file';
         const assetSize = asset.size || asset.file_size || 0;
         return {
@@ -175,7 +174,7 @@ export class ActivityService {
         };
     }
 
-    private mapCampaignToActivity(log: any): DashboardActivity {
+    private mapCampaignToActivity(log: ActivityLog): DashboardActivity {
         return {
             id: log.id,
             type: 'campaign',

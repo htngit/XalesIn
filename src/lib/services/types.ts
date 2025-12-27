@@ -119,6 +119,7 @@ export interface Template {
   created_at: string;
   updated_at: string;
   assets?: AssetFile[];
+  _deleted?: boolean;
 }
 
 export interface AssetFile {
