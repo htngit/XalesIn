@@ -83,6 +83,7 @@ const createWindow = async () => {
                 contextIsolation: true,
                 // Enable web security but allow local file access for packaged app
                 webSecurity: true,
+                webviewTag: true,
             },
         });
 

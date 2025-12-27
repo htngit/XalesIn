@@ -1150,7 +1150,8 @@ const createWindow = async () => {
         nodeIntegration: false,
         contextIsolation: true,
         // Enable web security but allow local file access for packaged app
-        webSecurity: true
+        webSecurity: true,
+        webviewTag: true
       }
     });
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {

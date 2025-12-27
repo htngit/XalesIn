@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Stagger } from '@/components/ui/animations';
 import { Quota } from '@/lib/services/types';
@@ -14,6 +13,7 @@ import { InitialSyncOrchestrator, SyncProgress } from '@/lib/services/InitialSyn
 import { InitialSyncScreen } from '../ui/InitialSyncScreen';
 import { Skeleton } from '../ui/skeleton';
 import { WhatsAppConnectionStatus } from '../ui/WhatsAppConnectionStatus';
+import { GeminiCard } from '../ui/GeminiCard';
 import {
   BarChart3,
   Users,
@@ -512,6 +512,11 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 </Card>
               </div>
             </Stagger>
+
+            {/* Gemini AI Container */}
+            <div className="mt-8">
+              <GeminiCard />
+            </div>
 
 
           </div>
