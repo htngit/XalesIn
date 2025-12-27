@@ -63,8 +63,6 @@ function SendPageContent({
   selectedAssets,
   delayRange,
   setDelayRange,
-  sendingMode,
-  setSendingMode,
   isSending,
   sendResult,
   handleStartCampaign,
@@ -95,8 +93,6 @@ function SendPageContent({
   selectedAssets: string[];
   delayRange: number[];
   setDelayRange: (range: number[]) => void;
-  sendingMode: 'static' | 'dynamic';
-  setSendingMode: (mode: 'static' | 'dynamic') => void;
   isSending: boolean;
   sendResult: any;
   handleStartCampaign: () => void;
@@ -377,68 +373,21 @@ function SendPageContent({
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label className="mb-2 block">{intl.formatMessage({ id: 'send.mode.label', defaultMessage: 'Sending Mode' })}</Label>
-                      <Select value={sendingMode} onValueChange={(value: 'static' | 'dynamic') => {
-                        setSendingMode(value);
-                        // Reset delay range based on mode
-                        if (value === 'static') {
-                          // Default to 3s
-                          setDelayRange([3]);
-                        } else {
-                          // Default to 3s - 10s
-                          setDelayRange([3, 10]);
-                        }
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={intl.formatMessage({ id: 'send.mode.placeholder', defaultMessage: 'Select sending mode' })} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="static">
-                            <div className="flex flex-col">
-                              <span className="font-medium">{intl.formatMessage({ id: 'send.mode.static', defaultMessage: 'Static Delay' })}</span>
-                              <span className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'send.mode.static.desc', defaultMessage: 'Fixed delay between messages' })}</span>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="dynamic">
-                            <div className="flex flex-col">
-                              <span className="font-medium">{intl.formatMessage({ id: 'send.mode.dynamic', defaultMessage: 'Dynamic Delay' })}</span>
-                              <span className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'send.mode.dynamic.desc', defaultMessage: 'Random delay between min and max range' })}</span>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
+                      <Label className="mb-2 block">{intl.formatMessage({ id: 'send.config.delay.label', defaultMessage: 'Delay Range (Dynamic)' })}</Label>
                       <div className="flex justify-between items-center mb-2">
-                        <Label>
-                          {sendingMode === 'static'
-                            ? intl.formatMessage({ id: 'send.config.delay.static', defaultMessage: 'Delay' })
-                            : intl.formatMessage({ id: 'send.config.delay.label', defaultMessage: 'Delay Range' })
-                          }
-                        </Label>
+                        <span className="text-xs text-muted-foreground">{intl.formatMessage({ id: 'send.mode.dynamic.desc', defaultMessage: 'Random delay between min and max range' })}</span>
                         <span className="text-sm font-medium text-primary">
-                          {sendingMode === 'static'
-                            ? formatDelayLabel(delayRange[0])
-                            : `${formatDelayLabel(delayRange[0])} - ${formatDelayLabel(delayRange[1] || delayRange[0])}`
-                          }
+                          {`${formatDelayLabel(delayRange[0])} - ${formatDelayLabel(delayRange[1] || delayRange[0])}`}
                         </span>
                       </div>
 
                       <Slider
-                        value={sendingMode === 'static'
-                          ? [PRESET_DELAYS.indexOf(delayRange[0]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[0]) : 0]
-                          : [
-                            PRESET_DELAYS.indexOf(delayRange[0]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[0]) : 0,
-                            PRESET_DELAYS.indexOf(delayRange[1]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[1]) : 1
-                          ]
-                        }
+                        value={[
+                          PRESET_DELAYS.indexOf(delayRange[0]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[0]) : 0,
+                          PRESET_DELAYS.indexOf(delayRange[1]) !== -1 ? PRESET_DELAYS.indexOf(delayRange[1]) : 1
+                        ]}
                         onValueChange={(vals) => {
-                          if (sendingMode === 'static') {
-                            setDelayRange([PRESET_DELAYS[vals[0]]]);
-                          } else {
-                            setDelayRange([PRESET_DELAYS[vals[0]], PRESET_DELAYS[vals[1]]]);
-                          }
+                          setDelayRange([PRESET_DELAYS[vals[0]], PRESET_DELAYS[vals[1]]]);
                         }}
                         max={PRESET_DELAYS.length - 1}
                         min={0}
@@ -465,9 +414,9 @@ function SendPageContent({
                             {selectedAssets.length > 0 && (
                               <li>• {intl.formatMessage({ id: 'send.config.summary.assets', defaultMessage: 'Assets: {count} file(s) attached' }, { count: selectedAssets.length })}</li>
                             )}
-                            <li>• {intl.formatMessage({ id: 'send.config.summary.mode', defaultMessage: 'Mode: {mode}' }, { mode: sendingMode === 'static' ? intl.formatMessage({ id: 'send.mode.static' }) : intl.formatMessage({ id: 'send.mode.dynamic' }) })}</li>
-                            <li>• {intl.formatMessage({ id: 'send.config.summary.delay', defaultMessage: 'Delay: {seconds}s between messages' }, { seconds: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}` })}</li>
-                            <li>• {intl.formatMessage({ id: 'send.config.summary.time', defaultMessage: 'Estimated time: ~{minutes} minutes' }, { minutes: Math.ceil(targetContacts.length * (sendingMode === 'static' ? delayRange[0] : (delayRange[0] + delayRange[1]) / 2) / 60) })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.mode', defaultMessage: 'Mode: {mode}' }, { mode: intl.formatMessage({ id: 'send.mode.dynamic' }) })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.delay', defaultMessage: 'Delay: {seconds}s between messages' }, { seconds: `${delayRange[0]}-${delayRange[1]}` })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.time', defaultMessage: 'Estimated time: ~{minutes} minutes' }, { minutes: Math.ceil(targetContacts.length * ((delayRange[0] + delayRange[1]) / 2) / 60) })}</li>
                           </ul>
                         </div>
                       </div>
@@ -658,8 +607,8 @@ export function SendPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  const [sendingMode, setSendingMode] = useState<'static' | 'dynamic'>('static');
-  const [delayRange, setDelayRange] = useState<number[]>([3]);
+  // Default to dynamic range [3, 10]
+  const [delayRange, setDelayRange] = useState<number[]>([3, 10]);
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -852,8 +801,7 @@ export function SendPage() {
         failed_count: 0,
         status: 'pending',
         config: {
-          sendingMode,
-          delayRange: sendingMode === 'static' ? delayRange[0] : delayRange
+          delayRange: delayRange
         } as any,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -877,7 +825,6 @@ export function SendPage() {
         {
           template: selectedTemplateData,
           assets: assetPaths,
-          mode: sendingMode,
           delayRange: delayRange
         }
       );
@@ -1035,8 +982,7 @@ export function SendPage() {
             templateName: selectedTemplateData?.name,
             groupName: selectedGroupData.name,
             selectedAssets: getSelectedAssets(),
-            sendingMode,
-            delayRange: sendingMode === 'static' ? delayRange[0] : `${delayRange[0]}-${delayRange[1]}`,
+            delayRange: `${delayRange[0]}-${delayRange[1]}`,
             reservationId: reservationId
           });
 
@@ -1050,7 +996,7 @@ export function SendPage() {
     return () => {
       unsubscribe();
     };
-  }, [activeJobId, reservationId, quota, delayRange, sendingMode, selectedGroupId, selectedTemplate]);
+  }, [activeJobId, reservationId, quota, delayRange, selectedGroupId, selectedTemplate]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -1083,8 +1029,6 @@ export function SendPage() {
       selectedTemplate={selectedTemplate}
       setSelectedTemplate={setSelectedTemplate}
       selectedAssets={selectedAssets}
-      sendingMode={sendingMode}
-      setSendingMode={setSendingMode}
       delayRange={delayRange}
       setDelayRange={setDelayRange}
       isSending={isSending}

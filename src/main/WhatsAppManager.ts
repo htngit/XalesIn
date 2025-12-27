@@ -545,13 +545,14 @@ export class WhatsAppManager {
                 throw new Error(`User ${to} is not registered on WhatsApp`);
             }
 
+            // Download or resolve file
             let media: MessageMedia;
             let localFilePath: string;
 
             // Check if mediaPath is a URL
             if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
                 console.log(`[WhatsAppManager] Downloading remote file: ${mediaPath}`);
-                // downloadFile now uses cache internally - no need to manage cleanup here for cached files
+                // downloadFile now uses cache internally
                 localFilePath = await this.downloadFile(mediaPath);
                 media = MessageMedia.fromFilePath(localFilePath);
             } else {
@@ -560,17 +561,31 @@ export class WhatsAppManager {
                 media = MessageMedia.fromFilePath(mediaPath);
             }
 
-            await this.client.sendMessage(chatId, media, { caption: content });
+            // Calculate approximate size from Base64 (3/4 of length)
+            const sizeInBytes = Math.ceil((media.data.length * 3) / 4);
+            const sizeInMB = sizeInBytes / (1024 * 1024);
+            console.log(`[WhatsAppManager] Prepared media: ${media.mimetype}, Size: ${sizeInMB.toFixed(2)}MB`);
+
+            // Safety check for Puppeteer limit (approx 50MB is often risky for evaluate)
+            if (sizeInMB > 50) {
+                console.warn(`[WhatsAppManager] File size ${sizeInMB.toFixed(2)}MB is near Puppeteer limit`);
+            }
+
+            // User requested to default ALL files as Documents to avoid "Evaluation failed" errors and ensure stability
+            console.log(`[WhatsAppManager] Sending media (${media.mimetype}) as Document.`);
+            const sendOptions = { caption: content, sendMediaAsDocument: true };
+
+            await this.client.sendMessage(chatId, media, sendOptions);
             console.log(`[WhatsAppManager] Media message sent successfully to ${to}`);
 
-            // Note: We don't clean up cached files here - they will be cleaned when:
-            // 1. Job completes (MessageProcessor should call clearFileCache)
-            // 2. Client disconnects
-            // 3. App closes
-
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[WhatsAppManager] Send media message error:', error);
+
+            // Check for specific Puppeteer evaluation error which usually means file too large
+            if (error.message && error.message.includes('Evaluation failed')) {
+                throw new Error(`Failed to send media: File may be too large or format unsupported. (Internal: ${error.message})`);
+            }
             throw error;
         }
     }

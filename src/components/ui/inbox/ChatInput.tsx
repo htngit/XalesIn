@@ -47,14 +47,17 @@ export function ChatInput({ onSendMessage, disabled = false, conversationKey }: 
             await onSendMessage(message.trim(), selectedAsset);
             setMessage('');
             setSelectedAsset(undefined);
-            if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-                textareaRef.current.focus();
-            }
         } catch (error) {
             console.error('Failed to send message:', error);
         } finally {
             setIsSending(false);
+            // Restore focus after state update to prevent focus loss when disabled state changes
+            setTimeout(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.style.height = 'auto';
+                    textareaRef.current.focus();
+                }
+            }, 10);
         }
     };
 
@@ -116,7 +119,7 @@ export function ChatInput({ onSendMessage, disabled = false, conversationKey }: 
                 </div>
             )}
 
-            <div className="flex items-end gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-200 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+            <div className="flex items-end gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-200 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-transparent transition-all outline-none">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -133,7 +136,7 @@ export function ChatInput({ onSendMessage, disabled = false, conversationKey }: 
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={intl.formatMessage({ id: 'inbox.input.placeholder', defaultMessage: 'Type a message...' })}
-                    className="flex-1 max-h-[120px] bg-transparent border-0 focus:ring-0 resize-none py-2 px-1 text-sm leading-relaxed"
+                    className="flex-1 max-h-[120px] bg-transparent !border-none !outline-none focus:ring-0 resize-none py-2 px-1 text-sm leading-relaxed"
                     rows={1}
                     disabled={disabled || isSending}
                 />

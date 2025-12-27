@@ -465,11 +465,22 @@ class WhatsAppManager {
         localFilePath = mediaPath;
         media = whatsappWeb_js.MessageMedia.fromFilePath(mediaPath);
       }
-      await this.client.sendMessage(chatId, media, { caption: content });
+      const sizeInBytes = Math.ceil(media.data.length * 3 / 4);
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      console.log(`[WhatsAppManager] Prepared media: ${media.mimetype}, Size: ${sizeInMB.toFixed(2)}MB`);
+      if (sizeInMB > 50) {
+        console.warn(`[WhatsAppManager] File size ${sizeInMB.toFixed(2)}MB is near Puppeteer limit`);
+      }
+      console.log(`[WhatsAppManager] Sending media (${media.mimetype}) as Document.`);
+      const sendOptions = { caption: content, sendMediaAsDocument: true };
+      await this.client.sendMessage(chatId, media, sendOptions);
       console.log(`[WhatsAppManager] Media message sent successfully to ${to}`);
       return true;
     } catch (error) {
       console.error("[WhatsAppManager] Send media message error:", error);
+      if (error.message && error.message.includes("Evaluation failed")) {
+        throw new Error(`Failed to send media: File may be too large or format unsupported. (Internal: ${error.message})`);
+      }
       throw error;
     }
   }
