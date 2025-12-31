@@ -101,11 +101,11 @@ export class WhatsAppManager {
                     dataPath: this.getSessionDataPath()
                 }),
                 puppeteer: puppeteerConfig,
-                // Fix for "sendIq called before startComms" and other version incompatibility errors
-                // Pinning to a known stable version of WhatsApp Web
-                webVersion: '2.2412.54',
+                // Fix for "sendIq called before startComms" - pinning to a known stable remote version
+                // Using wppconnect-team's archive to ensure stability
                 webVersionCache: {
-                    type: 'none'
+                    type: 'remote',
+                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2407.3.html'
                 }
             });
 

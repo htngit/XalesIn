@@ -918,7 +918,7 @@ export function SendPage() {
           });
 
           // Create History Log with individual message logs
-          await historyService.createLog({
+          const createdLog = await historyService.createLog({
             user_id: currentUserId,
             master_user_id: currentUserId,
             contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
@@ -950,7 +950,7 @@ export function SendPage() {
                     contact_phone: log.contact_phone,
                     contact_name: log.contact_name,
                     content: log.content || selectedTemplateData?.name || 'Message Sent',
-                    activity_log_id: log.activity_log_id
+                    activity_log_id: createdLog.id
                   });
                 } catch (e) {
                   console.error('Failed to sync message to inbox:', e);
