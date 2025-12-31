@@ -63,7 +63,9 @@ export const parseContactsXLS = async (file: File): Promise<ParsedContact[]> => 
 
                         // Basic phone normalization (optional, service handles strict validation)
                         if (phone.startsWith('0')) {
-                            phone = '62' + phone.substring(1);
+                            phone = '+62' + phone.substring(1);
+                        } else if (phone.startsWith('62')) {
+                            phone = '+' + phone;
                         }
 
                         return {

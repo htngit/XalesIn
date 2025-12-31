@@ -13,7 +13,7 @@ import { Upload, Download, AlertCircle, CheckCircle2, Loader2, Info } from 'luci
 import { generateContactTemplate, parseContactsXLS, type ParsedContact } from '@/lib/utils/xlsHandler';
 import { useServices } from '@/lib/services/ServiceContext';
 import { toast } from '@/hooks/use-toast';
-import { syncManager } from '@/lib/sync/SyncManager';
+
 
 interface UploadContactsDialogProps {
     open: boolean;
@@ -235,13 +235,27 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                             color: '#3b82f6', // Default blue
                             description: 'Created via bulk upload'
                         });
-                        console.log('Successfully created group:', newGroup);
-                        groups.push(newGroup);
-                    } catch (err) {
-                        console.error(`Failed to create group ${groupName}:`, err);
-                        setError(`Failed to create group "${groupName}". Please ensure the name is valid.`);
-                        setIsUploading(false);
-                        return; // Stop process if group creation fails
+                        console.log(`Created group: ${groupName} -> ${newGroup.id}`);
+                        groups.push(newGroup); // Add to our local groups array
+                    } catch (error: any) {
+                        if (error.message === 'Group name is already taken') {
+                            console.log(`Group ${groupName} exists, retrieving ID...`);
+                            // Fallback: find the existing group from fresh fetch
+                            const freshGroups = await groupService.getGroups();
+                            const existing = freshGroups.find(g => g.name.toLowerCase() === groupName.toLowerCase());
+                            if (existing) {
+                                groups.push(existing); // Add existing group to our array
+                                console.log(`Found existing group: ${groupName} -> ${existing.id}`);
+                            } else {
+                                console.warn(`Could not find group ${groupName} even after error.`);
+                                // Don't throw - just continue. The group assignment will use 'default'.
+                            }
+                        } else {
+                            console.error(`Failed to create group ${groupName}:`, error);
+                            setError(`Failed to create group "${groupName}". Please ensure the name is valid.`);
+                            setIsUploading(false);
+                            return; // Stop process if group creation fails
+                        }
                     }
                 }
                 // Refresh groups list after creation to ensure we have all IDs
@@ -269,7 +283,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                 return {
                     name: c.name,
                     phone: c.phone,
-                    group_id: targetGroup?.id || 'default', // Fallback to default if not found
+                    group_id: targetGroup?.id, // undefined if no group found
                     tags: c.tags || [],
                     notes: c.notes || '',
                     is_blocked: false
@@ -285,13 +299,6 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                     title: "Upload Successful",
                     description: `Successfully imported ${result.created} contacts. Sync started.`,
                 });
-
-                // Immediately trigger sync
-                try {
-                    await syncManager.triggerSync();
-                } catch (syncError) {
-                    console.warn('Immediate sync trigger failed:', syncError);
-                }
 
                 // Clear localStorage on success
                 clearStorage();

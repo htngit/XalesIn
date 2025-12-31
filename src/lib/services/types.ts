@@ -78,7 +78,7 @@ export interface Contact {
   id: string;
   name: string;
   phone: string;
-  group_id: string;
+  group_id?: string; // Optional - contacts can exist without a group
   master_user_id: string;
   created_by: string;
   tags?: string[];
