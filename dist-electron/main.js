@@ -799,6 +799,8 @@ class RegionService {
   constructor() {
     __publicField(this, "baseUrl", "https://wilayah.id/api");
     __publicField(this, "provincesCache", null);
+    // Cache for ALL regencies flattened
+    __publicField(this, "allRegenciesCache", null);
   }
   async fetchJson(endpoint) {
     try {
@@ -830,6 +832,24 @@ class RegionService {
     const res = await this.fetchJson(`/districts/${regencyCode}.json`);
     return res.data;
   }
+  // New: Fetch ALL regencies in Indonesia (Parallelized)
+  async getAllRegencies() {
+    if (this.allRegenciesCache) return this.allRegenciesCache;
+    console.log("[RegionService] caching all regencies (lazy load)...");
+    const provinces = await this.getProvinces();
+    const promises = provinces.map(
+      (p) => this.getRegencies(p.code).then(
+        (regs) => regs.map((r) => ({ ...r, provinceCode: p.code }))
+      ).catch((e) => {
+        console.error(`Failed to load regencies for ${p.name}`, e);
+        return [];
+      })
+    );
+    const results = await Promise.all(promises);
+    this.allRegenciesCache = results.flat();
+    console.log(`[RegionService] Cached ${this.allRegenciesCache.length} regencies.`);
+    return this.allRegenciesCache;
+  }
   /**
    * Analyzes the keyword to find a matching Province -> Regency -> Districts
    * Returns a list of district names if a specific Regency is found in the keyword.
@@ -844,19 +864,21 @@ class RegionService {
         if (p.name === "DKI Jakarta" && normalizedKeyword.includes("jakarta")) return true;
         return false;
       });
-      if (!matchingProvince) {
-        console.log("[RegionService] No matching province found in keyword");
-        return [];
+      let targetRegencies = [];
+      if (matchingProvince) {
+        console.log(`[RegionService] Found context province: ${matchingProvince.name}`);
+        targetRegencies = await this.getRegencies(matchingProvince.code);
+      } else {
+        console.log("[RegionService] No province found. Switching to Universal Regency Search...");
+        targetRegencies = await this.getAllRegencies();
       }
-      console.log(`[RegionService] Found context province: ${matchingProvince.name}`);
-      const regencies = await this.getRegencies(matchingProvince.code);
-      const matchingRegency = regencies.find((r) => {
+      const matchingRegency = targetRegencies.find((r) => {
         const rName = r.name.toLowerCase();
         const cleanName = rName.replace("kabupaten administrasi ", "").replace("kota administrasi ", "").replace("kabupaten ", "").replace("kota ", "").trim();
         return normalizedKeyword.includes(cleanName) || normalizedKeyword.includes(rName);
       });
       if (!matchingRegency) {
-        console.log("[RegionService] No matching regency found in keyword");
+        console.log("[RegionService] No matching regency found in keyword (Global Search).");
         return [];
       }
       console.log(`[RegionService] Found context regency: ${matchingRegency.name}`);
@@ -1014,7 +1036,9 @@ class MapScraper {
           if (!seenIds.has(uniqueId)) {
             seenIds.add(uniqueId);
             item.phone = item.phone ? item.phone.replace(/[^0-9+]/g, "") : "";
-            results.push(item);
+            if (item.phone) {
+              results.push(item);
+            }
           }
         }
         const addedCount = results.length - initialCount;

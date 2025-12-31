@@ -202,7 +202,10 @@ export class MapScraper {
                     if (!seenIds.has(uniqueId)) {
                         seenIds.add(uniqueId);
                         item.phone = item.phone ? item.phone.replace(/[^0-9+]/g, '') : '';
-                        results.push(item);
+
+                        if (item.phone) {
+                            results.push(item);
+                        }
                     }
                 }
 

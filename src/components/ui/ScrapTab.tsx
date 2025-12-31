@@ -18,7 +18,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { Search, Loader2, RefreshCw, Save, Phone, Globe, Minimize2, Eye } from 'lucide-react';
+import { Search, Loader2, RefreshCw, Save, Phone, Globe, Minimize2, Eye, Filter } from 'lucide-react';
 
 interface ScrapTabProps {
     groups: ContactGroup[];
@@ -38,6 +38,21 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
     const [isScraping, setIsScraping] = useState(false);
     const [showProgressModal, setShowProgressModal] = useState(false);
     const [progress, setProgress] = useState<{ total: number; current: number; message: string }>({ total: 0, current: 0, message: '' });
+
+    // Filter State
+    const [filterType, setFilterType] = useState<'all' | 'mobile' | 'landline'>('all');
+
+    // Computed Results
+    const filteredResults = results.filter(r => {
+        if (!r.phone) return false;
+        // Strict Mobile Rule: Only starts with +628
+        // MapScraper guarantees +62 format for 0-prefixed numbers
+        const isMobile = r.phone.startsWith('+628');
+
+        if (filterType === 'mobile') return isMobile;
+        if (filterType === 'landline') return !isMobile;
+        return true;
+    });
 
     // Saving State
     const [targetGroupId, setTargetGroupId] = useState<string>('new');
@@ -127,7 +142,9 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            setSelectedIndices(new Set(results.map((_, i) => i)));
+            // Only select visible filtered results
+            const visibleIndices = filteredResults.map(item => results.indexOf(item));
+            setSelectedIndices(new Set(visibleIndices));
         } else {
             setSelectedIndices(new Set());
         }
@@ -299,10 +316,27 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                 <AnimatedCard animation="slideUp" delay={0.1}>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
-                            <CardTitle>Scraped Results ({results.length})</CardTitle>
+                            <CardTitle>Scraped Results ({filteredResults.length})</CardTitle>
                             <CardDescription>Select contacts to save</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
+                                <Filter className="ml-2 h-4 w-4 text-muted-foreground" />
+                                <Select value={filterType} onValueChange={(v: any) => {
+                                    setFilterType(v);
+                                    setSelectedIndices(new Set()); // Reset selection on filter change
+                                }}>
+                                    <SelectTrigger className="w-[140px] h-9 border-none bg-transparent shadow-none">
+                                        <SelectValue placeholder="Filter" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Numbers</SelectItem>
+                                        <SelectItem value="mobile">Mobile Only</SelectItem>
+                                        <SelectItem value="landline">Landline Only</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
                                 <Select value={targetGroupId} onValueChange={setTargetGroupId}>
                                     <SelectTrigger className="w-[180px] h-9">
@@ -343,7 +377,7 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                                     <TableRow>
                                         <TableHead className="w-12">
                                             <Checkbox
-                                                checked={selectedIndices.size === results.length && results.length > 0}
+                                                checked={selectedIndices.size === filteredResults.length && filteredResults.length > 0}
                                                 onCheckedChange={handleSelectAll}
                                             />
                                         </TableHead>
@@ -354,36 +388,39 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {results.map((item, index) => (
-                                        <TableRow key={index} className={!item.phone ? 'opacity-50 bg-muted/30' : ''}>
-                                            <TableCell>
-                                                <Checkbox
-                                                    checked={selectedIndices.has(index)}
-                                                    onCheckedChange={(c) => handleSelectRow(index, c as boolean)}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="font-medium">{item.name}</TableCell>
-                                            <TableCell>
-                                                {item.phone ? (
-                                                    <div className="flex items-center text-green-600">
-                                                        <Phone className="mr-2 h-3 w-3" />
-                                                        {item.phone}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-muted-foreground text-xs italic">No phone</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="max-w-[300px] truncate" title={item.address}>{item.address}</TableCell>
-                                            <TableCell>
-                                                {item.website && (
-                                                    <a href={item.website} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline flex items-center">
-                                                        <Globe className="mr-1 h-3 w-3" />
-                                                        Link
-                                                    </a>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {filteredResults.map((item) => {
+                                        const index = results.indexOf(item); // Get original index for selection
+                                        return (
+                                            <TableRow key={index} className={!item.phone ? 'opacity-50 bg-muted/30' : ''}>
+                                                <TableCell>
+                                                    <Checkbox
+                                                        checked={selectedIndices.has(index)}
+                                                        onCheckedChange={(c) => handleSelectRow(index, c as boolean)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="font-medium">{item.name}</TableCell>
+                                                <TableCell>
+                                                    {item.phone ? (
+                                                        <div className="flex items-center text-green-600">
+                                                            <Phone className="mr-2 h-3 w-3" />
+                                                            {item.phone}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground text-xs italic">No phone</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="max-w-[300px] truncate" title={item.address}>{item.address}</TableCell>
+                                                <TableCell>
+                                                    {item.website && (
+                                                        <a href={item.website} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline flex items-center">
+                                                            <Globe className="mr-1 h-3 w-3" />
+                                                            Link
+                                                        </a>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>

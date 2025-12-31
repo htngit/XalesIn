@@ -13,6 +13,8 @@ interface RegionResponse<T> {
 export class RegionService {
     private baseUrl = 'https://wilayah.id/api';
     private provincesCache: BaseRegion[] | null = null;
+    // Cache for ALL regencies flattened
+    private allRegenciesCache: (BaseRegion & { provinceCode: string })[] | null = null;
 
     constructor() { }
 
@@ -50,6 +52,31 @@ export class RegionService {
         return res.data;
     }
 
+    // New: Fetch ALL regencies in Indonesia (Parallelized)
+    async getAllRegencies(): Promise<(BaseRegion & { provinceCode: string })[]> {
+        if (this.allRegenciesCache) return this.allRegenciesCache;
+
+        console.log('[RegionService] caching all regencies (lazy load)...');
+        const provinces = await this.getProvinces();
+
+        // Parallel fetch with concurrency is naturally handled by JS event loop for network requests
+        // But to be safe against rate limits, we could batch. 
+        // Given ~38 provinces, firing all at once is usually acceptable for modern APIs.
+        const promises = provinces.map(p =>
+            this.getRegencies(p.code).then(regs =>
+                regs.map(r => ({ ...r, provinceCode: p.code }))
+            ).catch(e => {
+                console.error(`Failed to load regencies for ${p.name}`, e);
+                return [];
+            })
+        );
+
+        const results = await Promise.all(promises);
+        this.allRegenciesCache = results.flat();
+        console.log(`[RegionService] Cached ${this.allRegenciesCache.length} regencies.`);
+        return this.allRegenciesCache;
+    }
+
     /**
      * Analyzes the keyword to find a matching Province -> Regency -> Districts
      * Returns a list of district names if a specific Regency is found in the keyword.
@@ -61,7 +88,7 @@ export class RegionService {
             // 1. Get Provinces
             const provinces = await this.getProvinces();
 
-            // 2. Find Candidate Provinces
+            // 2. Try Find Candidate Province
             // Match "jakarta" from "DKI JAKARTA", or "jawa barat"
             // Heuristic: check if pro.name is in keyword
             const matchingProvince = provinces.find(p => {
@@ -72,19 +99,20 @@ export class RegionService {
                 return false;
             });
 
-            if (!matchingProvince) {
-                console.log('[RegionService] No matching province found in keyword');
-                return [];
+            let targetRegencies: BaseRegion[] = [];
+
+            if (matchingProvince) {
+                console.log(`[RegionService] Found context province: ${matchingProvince.name}`);
+                targetRegencies = await this.getRegencies(matchingProvince.code);
+            } else {
+                console.log('[RegionService] No province found. Switching to Universal Regency Search...');
+                // Fallback: Check ALL regencies
+                targetRegencies = await this.getAllRegencies();
             }
 
-            console.log(`[RegionService] Found context province: ${matchingProvince.name}`);
-
-            // 3. Get Regencies for that Province
-            const regencies = await this.getRegencies(matchingProvince.code);
-
-            // 4. Find Candidate Regency
+            // 3. Find Candidate Regency in the target list
             // "Jakarta Selatan" in "Restoran di Jakarta Selatan"
-            const matchingRegency = regencies.find(r => {
+            const matchingRegency = targetRegencies.find(r => {
                 const rName = r.name.toLowerCase();
                 // Regencies often have "KABUPATEN" or "KOTA" prefix.
                 // Standardize: "KOTA ADMINISTRASI JAKARTA SELATAN"
@@ -98,17 +126,18 @@ export class RegionService {
                     .replace('kota ', '')
                     .trim();
 
+                // Exact word match capability or include check
                 return normalizedKeyword.includes(cleanName) || normalizedKeyword.includes(rName);
             });
 
             if (!matchingRegency) {
-                console.log('[RegionService] No matching regency found in keyword');
+                console.log('[RegionService] No matching regency found in keyword (Global Search).');
                 return [];
             }
 
             console.log(`[RegionService] Found context regency: ${matchingRegency.name}`);
 
-            // 5. Get Districts
+            // 4. Get Districts
             const districts = await this.getDistricts(matchingRegency.code);
             return districts.map(d => d.name);
 
