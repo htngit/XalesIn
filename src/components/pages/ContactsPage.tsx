@@ -287,7 +287,7 @@ function ContactsPageContent({
                       </TableRow>
                     ) : (
                       paginatedContacts.map((contact) => {
-                        const group = getGroupById(contact.group_id);
+                        const group = contact.group_id ? getGroupById(contact.group_id) : undefined;
                         const isSelected = selectedContactIds.has(contact.id);
                         return (
                           <TableRow key={contact.id}>

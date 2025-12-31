@@ -302,7 +302,7 @@ export class ContactService {
    * Enrich contacts with group information
    */
   private async enrichContactsWithGroups(contacts: LocalContact[]): Promise<ContactWithGroup[]> {
-    const groupIds = [...new Set(contacts.map(c => c.group_id))];
+    const groupIds = [...new Set(contacts.map(c => c.group_id).filter((id): id is string => !!id))];
 
     if (groupIds.length === 0) {
       return this.transformLocalContacts(contacts);
@@ -392,7 +392,7 @@ export class ContactService {
       let localContacts = await db.contacts
         .where('master_user_id')
         .equals(masterUserId)
-        .and(contact => !contact._deleted && groupIds.includes(contact.group_id))
+        .and(contact => !contact._deleted && !!contact.group_id && groupIds.includes(contact.group_id))
         .toArray();
 
       if (localContacts.length > 0) {
@@ -401,7 +401,7 @@ export class ContactService {
 
       // Fallback to server
       const serverContacts = await this.fetchContactsFromServer();
-      return serverContacts.filter(contact => groupIds.includes(contact.group_id));
+      return serverContacts.filter(contact => !!contact.group_id && groupIds.includes(contact.group_id));
     } catch (error) {
       console.error('Error fetching contacts by groups:', error);
       throw new Error(handleDatabaseError(error));

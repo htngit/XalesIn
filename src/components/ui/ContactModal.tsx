@@ -48,7 +48,7 @@ export function ContactModal({
         setFormData({
           name: contact.name,
           phone: contact.phone,
-          group_id: contact.group_id,
+          group_id: contact.group_id || '',
           tags: contact.tags || []
         });
       } else {
@@ -107,14 +107,14 @@ export function ContactModal({
       onNotification({ message: 'Please select a group', type: 'error' });
       return false;
     }
-    
+
     // Basic phone number validation (Indonesia format)
     const phoneRegex = /^(\+62|62|0)[0-9]{9,13}$/;
     if (!phoneRegex.test(formData.phone.replace(/\s+/g, ''))) {
       onNotification({ message: 'Please enter a valid Indonesian phone number', type: 'error' });
       return false;
     }
-    
+
     return true;
   };
 
@@ -124,7 +124,7 @@ export function ContactModal({
     setIsLoading(true);
     try {
       let savedContact: Contact | null = null;
-      
+
       if (mode === 'add') {
         const newContact = await contactService.createContact({
           name: formData.name.trim(),
@@ -153,7 +153,7 @@ export function ContactModal({
           });
         }
       }
-      
+
       if (savedContact) {
         onSave(savedContact);
         onClose();
@@ -183,7 +183,7 @@ export function ContactModal({
             {mode === 'add' ? 'Add New Contact' : 'Edit Contact'}
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="grid gap-4 py-4">
           {/* Name Field */}
           <div className="grid gap-2">
@@ -290,7 +290,7 @@ export function ContactModal({
             onClick={handleSave}
             disabled={isLoading || memoizedGroups.length === 0}
           >
-            {isLoading 
+            {isLoading
               ? (mode === 'add' ? 'Adding...' : 'Updating...')
               : (mode === 'add' ? 'Add Contact' : 'Update Contact')
             }

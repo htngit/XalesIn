@@ -531,8 +531,10 @@ export class GroupService {
       const contactCountMap = new Map<string, number>();
 
       contacts.forEach(contact => {
-        const currentCount = contactCountMap.get(contact.group_id) || 0;
-        contactCountMap.set(contact.group_id, currentCount + 1);
+        if (contact.group_id) {
+          const currentCount = contactCountMap.get(contact.group_id) || 0;
+          contactCountMap.set(contact.group_id, currentCount + 1);
+        }
       });
 
       // Update groups with actual counts
