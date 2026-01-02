@@ -628,11 +628,16 @@ export function ContactsPage() {
 
     // Filter by search query only
     if (searchQuery) {
-      filtered = filtered.filter(contact =>
-        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        contact.phone.includes(searchQuery) ||
-        (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())))
-      );
+      const lowerQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(contact => {
+        const group = groups.find(g => g.id === contact.group_id);
+        return (
+          contact.name.toLowerCase().includes(lowerQuery) ||
+          contact.phone.includes(searchQuery) ||
+          (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(lowerQuery))) ||
+          (group && group.name.toLowerCase().includes(lowerQuery))
+        );
+      });
     }
 
     setFilteredContacts(filtered);
