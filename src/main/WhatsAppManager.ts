@@ -4,6 +4,7 @@ import * as qrcode from 'qrcode-terminal';
 import { MessageReceiverWorker } from './workers/MessageReceiverWorker';
 import path from 'path';
 import fs from 'fs';
+import { browserManager } from './services/PuppeteerBrowserManager';
 
 /**
  * WhatsAppManager - Core WhatsApp client manager
@@ -33,47 +34,18 @@ export class WhatsAppManager {
     /**
      * Get the correct executable path for Puppeteer in production
      */
-    private getChromiumExecutablePath(): string | undefined {
-        if (!app.isPackaged) {
-            // Development mode - let Puppeteer use default
-            return undefined;
-        }
 
-        // Production mode - point to unpacked chromium
-        // Path: resources/app.asar.unpacked/node_modules/whatsapp-web.js/node_modules/puppeteer-core/.local-chromium/win64-1045629/chrome-win/chrome.exe
-        const chromiumPath = path.join(
-            process.resourcesPath,
-            'app.asar.unpacked',
-            'node_modules',
-            'whatsapp-web.js',
-            'node_modules',
-            'puppeteer-core',
-            '.local-chromium',
-            'win64-1045629',
-            'chrome-win',
-            'chrome.exe'
-        );
-
-        console.log('[WhatsAppManager] Checking Chromium path:', chromiumPath);
-
-        if (fs.existsSync(chromiumPath)) {
-            console.log('[WhatsAppManager] Chromium found at:', chromiumPath);
-            return chromiumPath;
-        } else {
-            console.error('[WhatsAppManager] Chromium not found at expected path:', chromiumPath);
-            // Return undefined to let Puppeteer try its default resolution
-            return undefined;
-        }
-    }
 
     /**
      * Initialize WhatsApp client with LocalAuth strategy
      */
-    private initializeClient(): void {
+    private async initializeClient(): Promise<void> {
         try {
             console.log('[WhatsAppManager] Initializing client...');
 
-            const executablePath = this.getChromiumExecutablePath();
+            const executablePath = await browserManager.getExecutablePath(
+                (progress, msg) => console.log(`[WhatsAppManager] Browser Setup: ${msg} (${progress}%)`)
+            );
 
             // Puppeteer configuration
             const puppeteerConfig: any = {
@@ -571,9 +543,26 @@ export class WhatsAppManager {
                 console.warn(`[WhatsAppManager] File size ${sizeInMB.toFixed(2)}MB is near Puppeteer limit`);
             }
 
-            // User requested to default ALL files as Documents to avoid "Evaluation failed" errors and ensure stability
-            console.log(`[WhatsAppManager] Sending media (${media.mimetype}) as Document.`);
-            const sendOptions = { caption: content, sendMediaAsDocument: true };
+            // Determine sending mode based on mime type
+            const mimeType = media.mimetype;
+            let sendMediaAsDocument = true; // Default to document for safety
+
+            // Images (jpg, png, webp) -> Send as Picture (not document)
+            if (mimeType.startsWith('image/')) {
+                sendMediaAsDocument = false;
+                console.log(`[WhatsAppManager] Detected Image (${mimeType}) -> Sending as Picture`);
+            }
+            // Videos (mp4) -> Send as Video (not document)
+            else if (mimeType.startsWith('video/')) {
+                sendMediaAsDocument = false;
+                console.log(`[WhatsAppManager] Detected Video (${mimeType}) -> Sending as Video`);
+            }
+            // PDF and others -> Send as Document
+            else {
+                console.log(`[WhatsAppManager] Detected Document (${mimeType}) -> Sending as Document`);
+            }
+
+            const sendOptions = { caption: content, sendMediaAsDocument: sendMediaAsDocument };
 
             await this.client.sendMessage(chatId, media, sendOptions);
             console.log(`[WhatsAppManager] Media message sent successfully to ${to}`);

@@ -18,6 +18,7 @@ const sanitizePhone = (raw: string): string => {
 };
 
 import { regionService } from './services/RegionService';
+import { browserManager } from './services/PuppeteerBrowserManager';
 
 export class MapScraper {
     private browser: any = null;
@@ -51,10 +52,18 @@ export class MapScraper {
 
         try {
             console.log(`[MapScraper] Starting Bing Maps scrape for "${keyword}" (Limit: ${limit})`);
+
+            // Resolve browser executable path (downloads if needed)
+            const executablePath = await browserManager.getExecutablePath((progress, msg) => {
+                const effectiveMsg = progress > 0 ? `${msg} (${progress}%)` : msg;
+                sendProgress(0, effectiveMsg);
+            });
+
             sendProgress(0, 'Initializing browser...');
 
             this.browser = await puppeteer.launch({
                 headless: true,
+                executablePath: executablePath, // Explicitly provide the path
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
