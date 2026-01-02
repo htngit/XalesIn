@@ -281,9 +281,10 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                         <div className="flex-1 space-y-2 w-full">
                             <label className="text-sm font-medium">Search Keyword</label>
                             <div className="relative">
-                                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder="e.g. Restoran Jakarta Selatan"
+                                    className="pl-10"
                                     value={keyword}
                                     onChange={(e) => setKeyword(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && !isScraping && handleScrape()}
