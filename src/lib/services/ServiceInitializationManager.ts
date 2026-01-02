@@ -7,6 +7,7 @@ import { QuotaService } from './QuotaService';
 import { AuthService } from './AuthService';
 import { PaymentService } from './PaymentService';
 import { SyncManager } from '../sync/SyncManager';
+import { MessageService } from './MessageService';
 
 /**
  * A singleton manager responsible for initializing, storing, and providing
@@ -28,6 +29,7 @@ export class ServiceInitializationManager {
   private quotaService: QuotaService | null = null;
   private authService: AuthService | null = null;
   private paymentService: PaymentService | null = null;
+  private messageService: MessageService | null = null;
   private syncManager: SyncManager | null = null;
 
   // Async lock to prevent concurrent initialization
@@ -39,6 +41,16 @@ export class ServiceInitializationManager {
   }
 
   public static getInstance(): ServiceInitializationManager {
+    // Development-only persistence to handle HMR
+    if (process.env.NODE_ENV === 'development') {
+      const globalKey = '__ServiceInitializationManagerInstance__';
+      const globalScope = globalThis as any;
+      if (!globalScope[globalKey]) {
+        globalScope[globalKey] = new ServiceInitializationManager();
+      }
+      return globalScope[globalKey];
+    }
+
     if (!ServiceInitializationManager.instance) {
       ServiceInitializationManager.instance = new ServiceInitializationManager();
     }
@@ -49,16 +61,17 @@ export class ServiceInitializationManager {
    * Check if services have been fully initialized
    */
   public isInitialized(): boolean {
-    return this.initializedServices.size === 8 &&
-           this.templateService !== null &&
-           this.contactService !== null &&
-           this.groupService !== null &&
-           this.assetService !== null &&
-           this.historyService !== null &&
-           this.quotaService !== null &&
-           this.authService !== null &&
-           this.paymentService !== null &&
-           !this.isInitializing;
+    return this.initializedServices.size === 9 &&
+      this.templateService !== null &&
+      this.contactService !== null &&
+      this.groupService !== null &&
+      this.assetService !== null &&
+      this.historyService !== null &&
+      this.quotaService !== null &&
+      this.authService !== null &&
+      this.paymentService !== null &&
+      this.messageService !== null &&
+      !this.isInitializing;
   }
 
   private _isDashboardInitialized: boolean = false;
@@ -124,6 +137,9 @@ export class ServiceInitializationManager {
 
         console.log('Initializing PaymentService...');
         await this.initializeService('payment', () => this.initializePaymentService(masterUserId));
+
+        console.log('Initializing MessageService...');
+        await this.initializeService('message', () => this.initializeMessageService(masterUserId));
 
         console.log('All services initialized successfully');
       } catch (error) {
@@ -193,6 +209,13 @@ export class ServiceInitializationManager {
       throw new Error('PaymentService not initialized. Call initializeAllServices first.');
     }
     return this.paymentService;
+  }
+
+  public getMessageService(): MessageService {
+    if (!this.messageService) {
+      throw new Error('MessageService not initialized. Call initializeAllServices first.');
+    }
+    return this.messageService;
   }
 
   // --- Private Initializers ---
@@ -268,6 +291,15 @@ export class ServiceInitializationManager {
     // PaymentService may not need a sync manager, instantiate directly
     this.paymentService = new PaymentService();
     // PaymentService doesn't have an initialize method, it's ready to use
+  }
+
+  private async initializeMessageService(_masterUserId: string): Promise<void> {
+    if (!this.syncManager) {
+      throw new Error('SyncManager not initialized');
+    }
+    this.messageService = new MessageService(this.syncManager);
+    // MessageService does not have an initialize method yet, or if it does, call it here.
+    // Based on previous code, it only needs constructor. 
   }
 }
 

@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Stagger } from '@/components/ui/animations';
 import { Quota } from '@/lib/services/types';
@@ -14,6 +13,7 @@ import { InitialSyncOrchestrator, SyncProgress } from '@/lib/services/InitialSyn
 import { InitialSyncScreen } from '../ui/InitialSyncScreen';
 import { Skeleton } from '../ui/skeleton';
 import { WhatsAppConnectionStatus } from '../ui/WhatsAppConnectionStatus';
+import { GeminiCard } from '../ui/GeminiCard';
 import {
   BarChart3,
   Users,
@@ -25,21 +25,39 @@ import {
   LogOut,
   Menu,
   X,
-  File
+  File,
+  Inbox
 } from 'lucide-react';
 import { useIntl, FormattedMessage } from 'react-intl';
+
+// Import app icon as module to ensure proper path resolution in Electron production build
+import appIconPng from '/icon.png';
+
+// Icon map to prevent tree-shaking issues in production build
+const IconMap = {
+  inbox: Inbox,
+  contacts: Users,
+  groups: Users,
+  templates: MessageSquare,
+  assets: File,
+  send: Send,
+  history: Clock,
+  settings: Settings,
+} as const;
+
+type IconMapKey = keyof typeof IconMap;
+
+// Helper component for rendering icons safely
+function MenuIcon({ iconKey, className }: { iconKey: IconMapKey; className?: string }) {
+  const IconComponent = IconMap[iconKey];
+  return IconComponent ? <IconComponent className={className} /> : null;
+}
+
+
 
 interface DashboardProps {
   userName: string;
   onLogout: () => void;
-}
-
-interface Activity {
-  id: string;
-  type: 'send' | 'template' | 'contact';
-  description: string;
-  time: string;
-  status: 'success' | 'partial' | 'pending' | 'failed';
 }
 
 export function Dashboard({ userName, onLogout }: DashboardProps) {
@@ -64,19 +82,15 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   });
 
 
-  // Recent activity fetched from local service
-  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
-
   // Subscriptions refs
   const quotaSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const paymentSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
-  const historySubscriptionRef = useRef<(() => void) | null>(null);
 
   // Guard against double init
   const initializedRef = useRef(false);
 
   // Get services from context
-  const { authService, quotaService, paymentService, historyService } = useServices();
+  const { authService, quotaService, paymentService } = useServices();
 
   // ---------------------------------------------------------------------
   // Initialization logic (runs once when user info is ready)
@@ -154,9 +168,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       }
 
       // Parallel fetch for efficiency - Offline First approach
-      const [currentQuota, recentLogs, contactStats, templateStats] = await Promise.all([
+      const [currentQuota, contactStats, templateStats] = await Promise.all([
         quotaService.getQuota(user.id),
-        serviceManager.getHistoryService().getRecentActivity(5),
         serviceManager.getContactService().getAllContacts(),
         serviceManager.getTemplateService().getTemplates()
       ]);
@@ -166,8 +179,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         setupQuotaSubscription(currentQuota.user_id);
       }
 
-      setupHistorySubscription();
-
       // Update stats
       setStats({
         totalContacts: contactStats.length,
@@ -176,16 +187,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         quotaRemaining: currentQuota?.remaining || 0,
         quotaLimit: currentQuota?.messages_limit || 0
       });
-
-      // Map logs to activity
-      const activities: Activity[] = recentLogs.map(log => ({
-        id: log.id,
-        type: 'send', // Simplified for now
-        description: log.template_name || intl.formatMessage({ id: 'dashboard.activity.campaign', defaultMessage: 'Message Campaign' }),
-        time: new Date(log.created_at).toLocaleDateString(intl.locale),
-        status: log.status === 'completed' ? 'success' : log.status === 'failed' ? 'failed' : 'pending'
-      }));
-      setRecentActivity(activities);
 
     } catch (e) {
       console.error('Error initializing user data:', e);
@@ -225,31 +226,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
   };
 
-  const setupHistorySubscription = () => {
-    if (historySubscriptionRef.current) {
-      historySubscriptionRef.current();
-    }
 
-    // Subscribe to local history updates
-    const unsubscribe = historyService.subscribeToLocalUpdates((log) => {
-      // Refresh recent activity when a log is added/updated
-      // Only process if it's a message campaign (has template_id)
-      if (log.template_id) {
-        historyService.getRecentActivity(5).then(logs => {
-          const activities: Activity[] = logs.map(log => ({
-            id: log.id,
-            type: 'send', // Simplified for now
-            description: log.template_name || intl.formatMessage({ id: 'dashboard.activity.campaign', defaultMessage: 'Message Campaign' }),
-            time: new Date(log.created_at).toLocaleDateString(intl.locale),
-            status: log.status === 'completed' ? 'success' : log.status === 'failed' ? 'failed' : 'pending'
-          }));
-          setRecentActivity(activities);
-        });
-      }
-    });
-
-    historySubscriptionRef.current = unsubscribe;
-  };
 
   const cleanupSubscriptions = () => {
     if (quotaSubscriptionRef.current) {
@@ -257,9 +234,6 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     }
     if (paymentSubscriptionRef.current) {
       paymentSubscriptionRef.current.unsubscribe();
-    }
-    if (historySubscriptionRef.current) {
-      historySubscriptionRef.current();
     }
   };
 
@@ -296,6 +270,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     return value.toLocaleString();
   };
 
+
+
   // ---------------------------------------------------------------------
   // Render based on appState
   // ---------------------------------------------------------------------
@@ -322,47 +298,45 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   }
 
   // Main dashboard UI (ready)
-  const menuItems = [
+  const menuItems: { id: IconMapKey; label: string; description: string }[] = [
+    {
+      id: 'inbox',
+      label: intl.formatMessage({ id: 'dashboard.menu.inbox', defaultMessage: 'Inbox' }),
+      description: intl.formatMessage({ id: 'dashboard.menu.inbox.desc', defaultMessage: 'View incoming messages' })
+    },
     {
       id: 'contacts',
       label: intl.formatMessage({ id: 'dashboard.menu.contacts', defaultMessage: 'Contacts' }),
-      icon: Users,
       description: intl.formatMessage({ id: 'dashboard.menu.contacts.desc', defaultMessage: 'Manage your contacts' })
     },
     {
       id: 'groups',
       label: intl.formatMessage({ id: 'dashboard.menu.groups', defaultMessage: 'Groups' }),
-      icon: Users,
       description: intl.formatMessage({ id: 'dashboard.menu.groups.desc', defaultMessage: 'Manage contact groups' })
     },
     {
       id: 'templates',
       label: intl.formatMessage({ id: 'dashboard.menu.templates', defaultMessage: 'Templates' }),
-      icon: MessageSquare,
       description: intl.formatMessage({ id: 'dashboard.menu.templates.desc', defaultMessage: 'Create and manage templates' })
     },
     {
       id: 'assets',
       label: intl.formatMessage({ id: 'dashboard.menu.assets', defaultMessage: 'Asset Files' }),
-      icon: File,
       description: intl.formatMessage({ id: 'dashboard.menu.assets.desc', defaultMessage: 'Upload and manage asset files' })
     },
     {
       id: 'send',
       label: intl.formatMessage({ id: 'dashboard.menu.send', defaultMessage: 'Send Messages' }),
-      icon: Send,
       description: intl.formatMessage({ id: 'dashboard.menu.send.desc', defaultMessage: 'Configure and send messages' })
     },
     {
       id: 'history',
       label: intl.formatMessage({ id: 'dashboard.menu.history', defaultMessage: 'History' }),
-      icon: Clock,
       description: intl.formatMessage({ id: 'dashboard.menu.history.desc', defaultMessage: 'View activity history' })
     },
     {
       id: 'settings',
       label: intl.formatMessage({ id: 'dashboard.menu.settings', defaultMessage: 'Settings' }),
-      icon: Settings,
       description: intl.formatMessage({ id: 'dashboard.menu.settings.desc', defaultMessage: 'App settings' })
     }
   ];
@@ -392,9 +366,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
           `}>
           <div className="h-full flex flex-col">
             <div className="p-6 hidden lg:flex items-center gap-2 border-b">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Send className="w-5 h-5 text-white" />
-              </div>
+              <img src={appIconPng} alt="App Icon" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">
                 <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
               </span>
@@ -413,7 +385,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 </div>
                 {menuItems.map((item) => (
                   <Button key={item.id} variant="ghost" className="w-full justify-start gap-3" onClick={() => handleMenuClick(item.id)}>
-                    <item.icon className="h-4 w-4" />
+                    <MenuIcon iconKey={item.id} className="h-4 w-4" />
                     {item.label}
                   </Button>
                 ))}
@@ -453,7 +425,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                   <FormattedMessage id="dashboard.overview.title" defaultMessage="Dashboard Overview" />
                 </h1>
                 <p className="text-muted-foreground">
-                  <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back! Here's what's happening with your campaigns." />
+                  <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back!" />
                 </p>
               </div>
 
@@ -541,93 +513,12 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
               </div>
             </Stagger>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-              {/* Recent Activity */}
-              <Card className="col-span-4">
-                <CardHeader>
-                  <CardTitle>
-                    <FormattedMessage id="dashboard.activity.title" defaultMessage="Recent Activity" />
-                  </CardTitle>
-                  <CardDescription>
-                    <FormattedMessage id="dashboard.activity.subtitle" defaultMessage="Your latest campaign and message activities" />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-8">
-                    {appState === 'loading' ? (
-                      // Skeleton Activity
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex items-center">
-                          <Skeleton className="h-9 w-9 rounded-full" />
-                          <div className="ml-4 space-y-1">
-                            <Skeleton className="h-4 w-48" />
-                            <Skeleton className="h-3 w-24" />
-                          </div>
-                          <div className="ml-auto">
-                            <Skeleton className="h-6 w-16 rounded-full" />
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      recentActivity.map((activity) => (
-                        <div key={activity.id} className="flex items-center">
-                          <div className={`
-                                w-9 h-9 rounded-full flex items-center justify-center border
-                                ${activity.type === 'send' ? 'bg-blue-50 border-blue-200 text-blue-600' :
-                              activity.type === 'template' ? 'bg-purple-50 border-purple-200 text-purple-600' :
-                                'bg-green-50 border-green-200 text-green-600'}
-                              `}>
-                            {activity.type === 'send' ? <Send className="h-4 w-4" /> :
-                              activity.type === 'template' ? <MessageSquare className="h-4 w-4" /> :
-                                <Users className="h-4 w-4" />}
-                          </div>
-                          <div className="ml-4 space-y-1">
-                            <p className="text-sm font-medium leading-none">{activity.description}</p>
-                            <p className="text-sm text-muted-foreground">{activity.time}</p>
-                          </div>
-                          <div className="ml-auto font-medium">
-                            {activity.status === 'success' ? (
-                              <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-                                <FormattedMessage id="common.status.success" defaultMessage="Success" />
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary">
-                                <FormattedMessage id="common.status.pending" defaultMessage="Pending" />
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Quick Actions */}
-              <Card className="col-span-3">
-                <CardHeader>
-                  <CardTitle>
-                    <FormattedMessage id="dashboard.quick_actions.title" defaultMessage="Quick Actions" />
-                  </CardTitle>
-                  <CardDescription>
-                    <FormattedMessage id="dashboard.quick_actions.subtitle" defaultMessage="Common tasks and shortcuts" />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                  {menuItems.slice(0, 4).map((item) => (
-                    <Button key={item.id} variant="outline" className="h-auto py-4 justify-start gap-4" onClick={() => handleMenuClick(item.id)}>
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <item.icon className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="text-left">
-                        <div className="font-semibold">{item.label}</div>
-                        <div className="text-xs text-muted-foreground">{item.description}</div>
-                      </div>
-                    </Button>
-                  ))}
-                </CardContent>
-              </Card>
+            {/* Gemini AI Container */}
+            <div className="mt-8">
+              <GeminiCard />
             </div>
+
+
           </div>
         </main>
       </div>

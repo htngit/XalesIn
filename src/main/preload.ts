@@ -121,5 +121,19 @@ contextBridge.exposeInMainWorld('electron', {
                 ipcRenderer.removeListener('whatsapp:job-error-detail', subscription);
             };
         }
-    } as WhatsAppAPI
+    } as WhatsAppAPI,
+
+    // Map Scraping API
+    mapScraping: {
+        scrape: (keyword: string, limit: number) => ipcRenderer.invoke('maps:scrape', { keyword, limit }),
+        cancel: () => ipcRenderer.invoke('maps:cancel'),
+        onProgress: (callback: (progress: any) => void) => {
+            const subscription = (_event: IpcRendererEvent, progress: any) => callback(progress);
+            ipcRenderer.on('maps:progress', subscription);
+
+            return () => {
+                ipcRenderer.removeListener('maps:progress', subscription);
+            };
+        }
+    }
 });

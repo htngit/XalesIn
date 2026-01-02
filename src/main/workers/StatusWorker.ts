@@ -53,13 +53,18 @@ export class StatusWorker {
 
         // Auto-reconnect if disconnected
         if (status === 'disconnected') {
-            console.log('[StatusWorker] Detected disconnection, attempting reconnect...');
-            try {
-                // Only attempt reconnect if not already connecting
-                // WhatsAppManager.connect() handles the check, but we can double check here
-                await this.whatsappManager.connect();
-            } catch (err) {
-                console.error('[StatusWorker] Reconnect failed:', err);
+            // Check if we have a saved session before trying to auto-connect
+            if (this.whatsappManager.hasExistingSession()) {
+                console.log('[StatusWorker] Detected disconnection with existing session, attempting reconnect...');
+                try {
+                    // Only attempt reconnect if not already connecting
+                    // WhatsAppManager.connect() handles the check, but we can double check here
+                    await this.whatsappManager.connect();
+                } catch (err) {
+                    console.error('[StatusWorker] Reconnect failed:', err);
+                }
+            } else {
+                console.debug('[StatusWorker] Disconnected, but no session found. Skipping auto-reconnect.');
             }
         }
     }

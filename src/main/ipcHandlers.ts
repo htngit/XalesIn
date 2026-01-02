@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { WhatsAppManager } from './WhatsAppManager';
 import { MessageProcessor } from './MessageProcessor';
 import { QueueWorker } from './workers/QueueWorker';
+import { mapScraper } from './mapScraper';
 
 let whatsappManager: WhatsAppManager | null = null;
 let messageProcessor: MessageProcessor | null = null;
@@ -55,7 +56,7 @@ export const setupIPC = (
                 throw new Error('WhatsAppManager not initialized');
             }
 
-            const result = await whatsappManager.connect();
+            const result = await whatsappManager.connect(true);
             return { success: true, connected: result };
         } catch (error) {
             console.error('[IPC] whatsapp:connect error:', error);
@@ -219,6 +220,29 @@ export const setupIPC = (
             return { success, message: success ? 'Job paused' : 'Failed to pause' };
         }
         return { success: false, message: 'Processor not ready' };
+    });
+
+    /**
+     * Map Scraping Handlers
+     */
+    ipcMain.handle('maps:scrape', async (event, { keyword, limit }) => {
+        try {
+            console.log(`[IPC] maps:scrape called for "${keyword}"`);
+            const results = await mapScraper.scrapeBingMaps(event, keyword, limit);
+            return { success: true, data: results };
+        } catch (error) {
+            console.error('[IPC] maps:scrape error:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    ipcMain.handle('maps:cancel', async () => {
+        console.log('[IPC] maps:cancel called');
+        mapScraper.cancel();
+        return { success: true };
     });
 
     /**

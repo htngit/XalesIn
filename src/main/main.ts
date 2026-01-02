@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, protocol, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { setupIPC } from './ipcHandlers';
@@ -83,7 +83,20 @@ const createWindow = async () => {
                 contextIsolation: true,
                 // Enable web security but allow local file access for packaged app
                 webSecurity: true,
+                webviewTag: true,
             },
+        });
+
+        // Handle external links
+        mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+            // Check if the URL is external (http/https and not localhost/127.0.0.1 if strictly needed, but generally safe to open all external links in browser)
+            // For now, simpler approach: open all new windows in default browser
+            if (url.startsWith('https:') || url.startsWith('http:')) {
+                import('electron').then(({ shell }) => {
+                    shell.openExternal(url);
+                });
+            }
+            return { action: 'deny' };
         });
 
         // Disable ALT key menu behavior
@@ -180,6 +193,15 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+    // Register custom protocol for local media
+    protocol.handle('media', (request) => {
+        const filePath = request.url.replace('media://', '');
+        const decodedPath = decodeURIComponent(filePath);
+        // Map to userData/media
+        const fullPath = path.join(app.getPath('userData'), 'media', decodedPath);
+        return net.fetch('file://' + fullPath);
+    });
+
     await createWindow();
 
     app.on('activate', () => {

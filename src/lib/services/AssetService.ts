@@ -10,6 +10,7 @@ import {
   addTimestamps,
   standardizeForService
 } from '../utils/timestamp';
+import { activityService } from './ActivityService';
 
 export class AssetService {
   private syncManager: SyncManager;
@@ -535,11 +536,19 @@ export class AssetService {
           // Return the updated asset
           const result = this.transformLocalAssets([updatedAsset])[0];
           console.log('AssetService: Upload complete, returning asset:', result.name);
+
+          // Notify activity service for real-time dashboard updates
+          setTimeout(() => activityService.notifyListeners(), 0);
+
           return result;
         } catch (uploadError) {
           console.error('AssetService: Failed to upload to storage, will retry later:', uploadError);
           // Keep asset as pending for background sync
           await this.syncManager.addToSyncQueue('assets', 'create', assetId, localToSupabase(localAsset));
+
+          // Still notify since asset is added locally
+          setTimeout(() => activityService.notifyListeners(), 0);
+
           return this.transformLocalAssets([localAsset])[0];
         }
       } else {
@@ -547,6 +556,9 @@ export class AssetService {
         // If offline, queue for background sync
         await this.syncManager.addToSyncQueue('assets', 'create', assetId, localToSupabase(localAsset));
         console.log('AssetService: Asset queued for background sync');
+
+        // Notify activity service for real-time dashboard updates
+        setTimeout(() => activityService.notifyListeners(), 0);
 
         // Return the local asset
         const result = this.transformLocalAssets([localAsset])[0];

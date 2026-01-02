@@ -43,7 +43,7 @@ export function JobProgressModal({ jobId, open, onClose }: JobProgressModalProps
             status: 'pending'
         });
 
-        const unsubscribe = window.electron.whatsapp.onJobProgress((data) => {
+        const unsubscribe = window.electron.whatsapp.onJobProgress((data: JobProgressData) => {
             if (data.jobId === jobId) {
                 setProgress(data);
             }

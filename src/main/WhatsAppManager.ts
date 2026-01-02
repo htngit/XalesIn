@@ -4,6 +4,7 @@ import * as qrcode from 'qrcode-terminal';
 import { MessageReceiverWorker } from './workers/MessageReceiverWorker';
 import path from 'path';
 import fs from 'fs';
+import { browserManager } from './services/PuppeteerBrowserManager';
 
 /**
  * WhatsAppManager - Core WhatsApp client manager
@@ -33,47 +34,18 @@ export class WhatsAppManager {
     /**
      * Get the correct executable path for Puppeteer in production
      */
-    private getChromiumExecutablePath(): string | undefined {
-        if (!app.isPackaged) {
-            // Development mode - let Puppeteer use default
-            return undefined;
-        }
 
-        // Production mode - point to unpacked chromium
-        // Path: resources/app.asar.unpacked/node_modules/whatsapp-web.js/node_modules/puppeteer-core/.local-chromium/win64-1045629/chrome-win/chrome.exe
-        const chromiumPath = path.join(
-            process.resourcesPath,
-            'app.asar.unpacked',
-            'node_modules',
-            'whatsapp-web.js',
-            'node_modules',
-            'puppeteer-core',
-            '.local-chromium',
-            'win64-1045629',
-            'chrome-win',
-            'chrome.exe'
-        );
-
-        console.log('[WhatsAppManager] Checking Chromium path:', chromiumPath);
-
-        if (fs.existsSync(chromiumPath)) {
-            console.log('[WhatsAppManager] Chromium found at:', chromiumPath);
-            return chromiumPath;
-        } else {
-            console.error('[WhatsAppManager] Chromium not found at expected path:', chromiumPath);
-            // Return undefined to let Puppeteer try its default resolution
-            return undefined;
-        }
-    }
 
     /**
      * Initialize WhatsApp client with LocalAuth strategy
      */
-    private initializeClient(): void {
+    private async initializeClient(): Promise<void> {
         try {
             console.log('[WhatsAppManager] Initializing client...');
 
-            const executablePath = this.getChromiumExecutablePath();
+            const executablePath = await browserManager.getExecutablePath(
+                (progress, msg) => console.log(`[WhatsAppManager] Browser Setup: ${msg} (${progress}%)`)
+            );
 
             // Puppeteer configuration
             const puppeteerConfig: any = {
@@ -98,16 +70,14 @@ export class WhatsAppManager {
 
             this.client = new Client({
                 authStrategy: new LocalAuth({
-                    dataPath: app.isPackaged
-                        ? path.join(app.getPath('userData'), '.wwebjs_auth')
-                        : '.wwebjs_auth'
+                    dataPath: this.getSessionDataPath()
                 }),
                 puppeteer: puppeteerConfig,
-                // Fix for "Cannot read properties of undefined (reading 'VERSION')" error
-                // This tells the library to fetch the latest WhatsApp Web version from a remote cache
+                // Fix for "sendIq called before startComms" - pinning to a known stable remote version
+                // Using wppconnect-team's archive to ensure stability
                 webVersionCache: {
                     type: 'remote',
-                    remotePath: 'https://raw.githubusercontent.com/AntoniaSaGe/AntoniaSaGe/main/whatsapp-web-version'
+                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2407.3.html'
                 }
             });
 
@@ -188,9 +158,30 @@ export class WhatsAppManager {
             console.log(`[WhatsAppManager] Loading... ${percent}% - ${message}`);
         });
 
-        // Message received event
-        this.client.on('message', async (message: Message) => {
-            console.log('[WhatsAppManager] Message received:', message.from);
+        // Message received event - using 'message_create' to capture ALL messages
+        // including messages sent from your own phone (e.g., replying from phone)
+        // 'message' event ONLY captures incoming messages from others
+        this.client.on('message_create', async (message: Message) => {
+            // Determine the remote chat ID (who we are talking to)
+            // If from me, target is 'to'. If from other, target is 'from'.
+            const remoteChatId = message.fromMe ? message.to : message.from;
+
+            // 1. FILTER: Ignore Group and Broadcast messages
+            // We only support individual chats for now
+            if (remoteChatId.endsWith('@g.us') || remoteChatId.endsWith('@broadcast')) {
+                // Only log if it's not a status update (broadcast) which can be spammy
+                if (!remoteChatId.includes('status')) {
+                    // console.log('[WhatsAppManager] Skipping group/channel message:', remoteChatId);
+                }
+                return;
+            }
+
+            // 2. LOGGING
+            console.log(`[WhatsAppManager] Message received (FromMe: ${message.fromMe}): ${remoteChatId}`);
+
+            // Note: We used to skip fromMe messages to avoid duplicates with local inserts.
+            // However, relying on this event ensures we get the *real* WhatsApp Message ID and timestamp.
+            // The frontend/service should handle "upsert" logic to avoid duplication if it already saved a temporary version.
 
             // Forward to MessageReceiverWorker
             if (this.messageReceiverWorker) {
@@ -205,7 +196,8 @@ export class WhatsAppManager {
                         body: message.body,
                         type: message.type,
                         timestamp: message.timestamp,
-                        hasMedia: message.hasMedia
+                        hasMedia: message.hasMedia,
+                        fromMe: message.fromMe
                     });
                 }
             }
@@ -215,27 +207,101 @@ export class WhatsAppManager {
     /**
      * Connect to WhatsApp
      */
-    async connect(): Promise<boolean> {
+    /**
+     * Connect to WhatsApp
+     * @param force - Force a fresh connection (kill old browser/session)
+     */
+    async connect(force: boolean = false): Promise<boolean> {
         try {
-            console.log('[WhatsAppManager] Connecting...');
-
-            if (!this.client) {
-                throw new Error('Client not initialized');
-            }
-
-            // Don't initialize if already ready
+            // 1. Check existing states
             if (this.status === 'ready') {
+                if (force) {
+                    console.log('[WhatsAppManager] Force connect requested while ready. Disconnecting first...');
+                    // Optional: disconnect first if you want to support "Restart" behavior
+                    // For now, let's assume if it's ready, we might want to check if it's responsive? 
+                    // But per user request "connected gak masalah", we can skip.
+                    // However, if user clicks "Connect" maybe they know it's broken. 
+                    // Let's rely on the "stuck" part.
+                    // If user clicks Connect, they probably want to verify connection. 
+                    // Let's blindly trust 'ready' for now to avoid accidental disconnects, 
+                    // unless we want to be strict.
+                    // User said: "kecuali background proses emang udah connecting dan connected gak masalah"
+                    // So if connected, we leave it.
+                    console.log('[WhatsAppManager] Already connected. Skipping force connect.');
+                    return true;
+                }
                 console.log('[WhatsAppManager] Already connected');
                 return true;
             }
 
-            // Reset status to connecting before initializing
+            if (this.status === 'connecting') {
+                if (!force) {
+                    console.log('[WhatsAppManager] Already connecting. Background process active.');
+                    return false;
+                }
+                console.warn('[WhatsAppManager] Connection in progress but Force requested. Killing old session...');
+            }
+
+            console.log(`[WhatsAppManager] Starting connection (Force: ${force})...`);
+
+            // 2. Set status
             this.status = 'connecting';
             this.broadcastStatus('connecting');
 
-            await this.client.initialize();
+            // 3. Force Reset: Destroy existing client/browser
+            if (this.client) {
+                try {
+                    console.log('[WhatsAppManager] Destroying previous client...');
+                    await this.client.destroy();
+                } catch (e) {
+                    console.warn('[WhatsAppManager] Error destroying client:', e);
+                }
+                this.client = null;
+            }
+
+            // 4. Initialize new Client
+            await this.initializeClient();
+
+            if (!this.client) {
+                throw new Error('Failed to initialize WhatsApp client');
+            }
+
+            // 5. Attempt connection with Retry Logic
+            try {
+                await (this.client as Client).initialize();
+            } catch (initError: any) {
+                // Handle "Execution context was destroyed" / "Protocol error"
+                if (initError.message && (
+                    initError.message.includes('Execution context was destroyed') ||
+                    initError.message.includes('Protocol error')
+                )) {
+                    console.warn('[WhatsAppManager] Protocol error during init. Retrying in 2s...', initError.message);
+
+                    // Cleanup failed attempt
+                    if (this.client) {
+                        try { await (this.client as Client).destroy(); } catch (_) { }
+                    }
+                    this.client = null;
+
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
+                    // Retry once
+                    await this.initializeClient();
+
+                    // TS Workaround: explicit check
+                    if (this.client) {
+                        console.log('[WhatsAppManager] Retrying initialization...');
+                        await (this.client as Client).initialize();
+                    } else {
+                        throw new Error('Failed to re-initialize client during retry');
+                    }
+                } else {
+                    throw initError;
+                }
+            }
+
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[WhatsAppManager] Connection error:', error);
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');
@@ -251,6 +317,42 @@ export class WhatsAppManager {
     }
 
     /**
+     * Get session data path
+     */
+    private getSessionDataPath(): string {
+        return app.isPackaged
+            ? path.join(app.getPath('userData'), '.wwebjs_auth')
+            : '.wwebjs_auth';
+    }
+
+    /**
+     * Delete session data directory
+     */
+    private deleteSessionData(): void {
+        const sessionPath = this.getSessionDataPath();
+        const authPath = path.resolve(sessionPath, 'session'); // LocalAuth creates a 'session' subdir
+
+        console.log(`[WhatsAppManager] Deleting session data at: ${sessionPath}`);
+
+        try {
+            // Delete the specific session folder created by LocalAuth
+            // Note: LocalAuth uses clientId 'session' by default if not specified
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                console.log('[WhatsAppManager] Session directory deleted successfully');
+            } else if (fs.existsSync(sessionPath)) {
+                // Fallback: try to delete the root auth folder if the specific session folder isn't found
+                // This might be safer to avoid deleting other sessions if we had multiple
+                // But since we use default, let's just clean up what we can.
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+                console.log('[WhatsAppManager] Auth directory deleted successfully');
+            }
+        } catch (error) {
+            console.error('[WhatsAppManager] Failed to delete session data:', error);
+        }
+    }
+
+    /**
      * Disconnect from WhatsApp
      */
     async disconnect(): Promise<void> {
@@ -258,6 +360,16 @@ export class WhatsAppManager {
             console.log('[WhatsAppManager] Disconnecting...');
 
             if (this.client) {
+                // Try to logout nicely first to notify WhatsApp server
+                if (this.status === 'ready') {
+                    try {
+                        await this.client.logout();
+                        console.log('[WhatsAppManager] Logged out from WhatsApp');
+                    } catch (logoutError) {
+                        console.warn('[WhatsAppManager] Logout failed (ignoring):', logoutError);
+                    }
+                }
+
                 await this.client.destroy();
                 this.client = null;
             }
@@ -265,8 +377,11 @@ export class WhatsAppManager {
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');
 
-            // Clear file cache on disconnect
+            // Clear file cache
             this.clearFileCache();
+
+            // critical: delete session files to force re-scan
+            this.deleteSessionData();
 
             // Re-initialize client so it can be connected again
             this.initializeClient();
@@ -275,6 +390,31 @@ export class WhatsAppManager {
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');
             throw error;
+        }
+    }
+
+    /**
+     * Check if a local session exists
+     */
+    hasExistingSession(): boolean {
+        const sessionPath = this.getSessionDataPath();
+        const authPath = path.resolve(sessionPath, 'session');
+
+        // Check if session directory exists and is not empty
+        try {
+            if (fs.existsSync(authPath)) {
+                const files = fs.readdirSync(authPath);
+                return files.length > 0;
+            }
+            if (fs.existsSync(sessionPath)) {
+                // Fallback check for root folder (though LocalAuth usually makes a subdir)
+                const files = fs.readdirSync(sessionPath);
+                return files.length > 0;
+            }
+            return false;
+        } catch (error) {
+            console.error('[WhatsAppManager] Error checking session existence:', error);
+            return false;
         }
     }
 
@@ -462,13 +602,14 @@ export class WhatsAppManager {
                 throw new Error(`User ${to} is not registered on WhatsApp`);
             }
 
+            // Download or resolve file
             let media: MessageMedia;
             let localFilePath: string;
 
             // Check if mediaPath is a URL
             if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
                 console.log(`[WhatsAppManager] Downloading remote file: ${mediaPath}`);
-                // downloadFile now uses cache internally - no need to manage cleanup here for cached files
+                // downloadFile now uses cache internally
                 localFilePath = await this.downloadFile(mediaPath);
                 media = MessageMedia.fromFilePath(localFilePath);
             } else {
@@ -477,17 +618,48 @@ export class WhatsAppManager {
                 media = MessageMedia.fromFilePath(mediaPath);
             }
 
-            await this.client.sendMessage(chatId, media, { caption: content });
+            // Calculate approximate size from Base64 (3/4 of length)
+            const sizeInBytes = Math.ceil((media.data.length * 3) / 4);
+            const sizeInMB = sizeInBytes / (1024 * 1024);
+            console.log(`[WhatsAppManager] Prepared media: ${media.mimetype}, Size: ${sizeInMB.toFixed(2)}MB`);
+
+            // Safety check for Puppeteer limit (approx 50MB is often risky for evaluate)
+            if (sizeInMB > 50) {
+                console.warn(`[WhatsAppManager] File size ${sizeInMB.toFixed(2)}MB is near Puppeteer limit`);
+            }
+
+            // Determine sending mode based on mime type
+            const mimeType = media.mimetype;
+            let sendMediaAsDocument = true; // Default to document for safety
+
+            // Images (jpg, png, webp) -> Send as Picture (not document)
+            if (mimeType.startsWith('image/')) {
+                sendMediaAsDocument = false;
+                console.log(`[WhatsAppManager] Detected Image (${mimeType}) -> Sending as Picture`);
+            }
+            // Videos (mp4) -> Send as Video (not document)
+            else if (mimeType.startsWith('video/')) {
+                sendMediaAsDocument = false;
+                console.log(`[WhatsAppManager] Detected Video (${mimeType}) -> Sending as Video`);
+            }
+            // PDF and others -> Send as Document
+            else {
+                console.log(`[WhatsAppManager] Detected Document (${mimeType}) -> Sending as Document`);
+            }
+
+            const sendOptions = { caption: content, sendMediaAsDocument: sendMediaAsDocument };
+
+            await this.client.sendMessage(chatId, media, sendOptions);
             console.log(`[WhatsAppManager] Media message sent successfully to ${to}`);
 
-            // Note: We don't clean up cached files here - they will be cleaned when:
-            // 1. Job completes (MessageProcessor should call clearFileCache)
-            // 2. Client disconnects
-            // 3. App closes
-
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[WhatsAppManager] Send media message error:', error);
+
+            // Check for specific Puppeteer evaluation error which usually means file too large
+            if (error.message && error.message.includes('Evaluation failed')) {
+                throw new Error(`Failed to send media: File may be too large or format unsupported. (Internal: ${error.message})`);
+            }
             throw error;
         }
     }

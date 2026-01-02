@@ -10,6 +10,7 @@ import {
   addTimestamps,
   standardizeForService
 } from '../utils/timestamp';
+import { activityService } from './ActivityService';
 
 export class TemplateService {
   private realtimeChannel: any = null;
@@ -409,7 +410,12 @@ export class TemplateService {
       await this.syncManager.addToSyncQueue('templates', 'create', templateId, syncData);
 
       // Return transformed template
-      return this.transformLocalTemplates([localTemplate])[0];
+      const created = this.transformLocalTemplates([localTemplate])[0];
+
+      // Notify activity service
+      setTimeout(() => activityService.notifyListeners(), 0);
+
+      return created;
     } catch (error) {
       console.error('Error creating template:', error);
       throw new Error(handleDatabaseError(error));
@@ -432,14 +438,15 @@ export class TemplateService {
       await this.getMasterUserId();
 
       // Check if template exists locally
-      const existingTemplate = await db.templates.get(id);
+      let templateToUpdate = await db.templates.get(id);
 
-      if (!existingTemplate || existingTemplate._deleted) {
+      if (!templateToUpdate || templateToUpdate._deleted) {
         // Template doesn't exist locally, try server
         const serverTemplate = await this.getTemplateById(id);
         if (!serverTemplate) {
           throw new Error('Template not found');
         }
+        templateToUpdate = serverTemplate as any;
       }
 
       // Validate minimum 3 variants if variants are being updated
@@ -458,7 +465,7 @@ export class TemplateService {
 
       // Use standardized timestamp utilities for updates
       const timestamps = addTimestamps({}, true);
-      const syncMetadata = addSyncMetadata(existingTemplate, true);
+      const syncMetadata = addSyncMetadata(templateToUpdate, true);
 
       // Prepare update data
       const updateData = {
@@ -478,6 +485,9 @@ export class TemplateService {
         // Transform for sync queue (convert Date objects to ISO strings)
         const syncData = localToSupabase(updatedTemplate);
         await this.syncManager.addToSyncQueue('templates', 'update', id, syncData);
+
+        // Notify activity service
+        setTimeout(() => activityService.notifyListeners(), 0);
 
         // Return transformed template
         return this.transformLocalTemplates([updatedTemplate])[0];
@@ -529,6 +539,9 @@ export class TemplateService {
       // Transform for sync queue (convert Date objects to ISO strings)
       const syncData = localToSupabase(existingTemplate);
       await this.syncManager.addToSyncQueue('templates', 'delete', id, syncData);
+
+      // Notify activity service
+      setTimeout(() => activityService.notifyListeners(), 0);
     } catch (error) {
       console.error('Error deleting template:', error);
       throw new Error(handleDatabaseError(error));

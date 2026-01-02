@@ -15,18 +15,18 @@ export function toISOString(date: Date | string | number | null | undefined): st
   if (!date) {
     return new Date().toISOString();
   }
-  
+
   try {
     if (date instanceof Date) {
       return date.toISOString();
     }
-    
+
     if (typeof date === 'string') {
       // Handle already ISO formatted strings
       if (date.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
         return date;
       }
-      
+
       // Parse various string formats
       const parsedDate = new Date(date);
       if (isNaN(parsedDate.getTime())) {
@@ -35,13 +35,13 @@ export function toISOString(date: Date | string | number | null | undefined): st
       }
       return parsedDate.toISOString();
     }
-    
+
     if (typeof date === 'number') {
       // Handle Unix timestamp (milliseconds)
       const dateObj = new Date(date);
       return dateObj.toISOString();
     }
-    
+
     // Fallback for unknown types
     console.warn(`Unexpected date type: ${typeof date}, using current time`);
     return new Date().toISOString();
@@ -60,18 +60,19 @@ export function fromISOString(isoString: string | Date | null | undefined): Date
   if (!isoString) {
     return new Date();
   }
-  
+
   try {
     if (isoString instanceof Date) {
-      return isoString;
+      return isNaN(isoString.getTime()) ? new Date() : isoString;
     }
-    
+
     if (typeof isoString === 'string') {
       // Handle already ISO formatted strings
       if (isoString.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-        return new Date(isoString);
+        const date = new Date(isoString);
+        return isNaN(date.getTime()) ? new Date() : date;
       }
-      
+
       // Parse other string formats
       const parsedDate = new Date(isoString);
       if (isNaN(parsedDate.getTime())) {
@@ -80,7 +81,7 @@ export function fromISOString(isoString: string | Date | null | undefined): Date
       }
       return parsedDate;
     }
-    
+
     // Fallback for unknown types
     console.warn(`Unexpected ISO string type: ${typeof isoString}, using current time`);
     return new Date();
@@ -106,7 +107,7 @@ export function normalizeTimestamp(value: any): string {
  */
 export function isValidTimestamp(value: any): boolean {
   if (!value) return false;
-  
+
   try {
     const date = fromISOString(value);
     return !isNaN(date.getTime());
@@ -179,21 +180,23 @@ export function supabaseToLocal(data: any): any {
   if (!data || typeof data !== 'object') {
     return data;
   }
-  
+
   // Handle arrays (for queries that return multiple records)
   if (Array.isArray(data)) {
     return data.map(item => supabaseToLocal(item));
   }
-  
+
   // Handle single objects
   const transformed = { ...data };
-  
+
   // Convert timestamp fields from ISO strings to Date objects
   const timestampFields = [
     'created_at', 'updated_at', 'uploadDate', 'started_at', 'completed_at',
-    'scheduled_for', 'reset_date', 'expires_at', 'completed_at'
+    'scheduled_for', 'reset_date', 'expires_at', 'completed_at',
+    'sent_at', 'last_interaction', 'committed_at', 'last_activity',
+    'last_active', 'cached_at', 'last_accessed'
   ];
-  
+
   timestampFields.forEach(field => {
     if (transformed[field]) {
       try {
@@ -204,7 +207,7 @@ export function supabaseToLocal(data: any): any {
       }
     }
   });
-  
+
   // Convert _lastModified if it exists and is a string
   if (transformed._lastModified && typeof transformed._lastModified === 'string') {
     try {
@@ -213,7 +216,7 @@ export function supabaseToLocal(data: any): any {
       console.warn(`Failed to convert _lastModified from ISO to Date:`, error);
     }
   }
-  
+
   return transformed;
 }
 
@@ -226,21 +229,23 @@ export function localToSupabase(data: any): any {
   if (!data || typeof data !== 'object') {
     return data;
   }
-  
+
   // Handle arrays
   if (Array.isArray(data)) {
     return data.map(item => localToSupabase(item));
   }
-  
+
   // Handle single objects
   const transformed = { ...data };
-  
+
   // Convert timestamp fields from Date objects to ISO strings
   const timestampFields = [
     'created_at', 'updated_at', 'uploadDate', 'started_at', 'completed_at',
-    'scheduled_for', 'reset_date', 'expires_at', 'completed_at'
+    'scheduled_for', 'reset_date', 'expires_at', 'completed_at',
+    'sent_at', 'last_interaction', 'committed_at', 'last_activity',
+    'last_active', 'cached_at', 'last_accessed'
   ];
-  
+
   timestampFields.forEach(field => {
     if (transformed[field]) {
       try {
@@ -251,7 +256,7 @@ export function localToSupabase(data: any): any {
       }
     }
   });
-  
+
   // Convert _lastModified if it exists and is a Date object
   if (transformed._lastModified && transformed._lastModified instanceof Date) {
     try {
@@ -260,7 +265,7 @@ export function localToSupabase(data: any): any {
       console.warn(`Failed to convert _lastModified from Date to ISO:`, error);
     }
   }
-  
+
   return transformed;
 }
 
@@ -288,10 +293,10 @@ export function compareTimestamps(a: any, b: any): number {
   try {
     const dateA = fromISOString(a);
     const dateB = fromISOString(b);
-    
+
     const timeA = dateA.getTime();
     const timeB = dateB.getTime();
-    
+
     if (timeA < timeB) return -1;
     if (timeA > timeB) return 1;
     return 0;
@@ -313,7 +318,7 @@ export function isWithinRange(timestamp: any, startDate: any, endDate: any): boo
     const ts = fromISOString(timestamp);
     const start = fromISOString(startDate);
     const end = fromISOString(endDate);
-    
+
     return ts >= start && ts <= end;
   } catch (error) {
     console.error('Error checking timestamp range:', error);
@@ -335,26 +340,26 @@ export function getRelativeTime(timestamp: any): string {
     const diffMinutes = Math.floor(diffSeconds / 60);
     const diffHours = Math.floor(diffMinutes / 60);
     const diffDays = Math.floor(diffHours / 24);
-    
+
     if (diffSeconds < 60) {
       return diffMs >= 0 ? 'in a few seconds' : 'a few seconds ago';
     }
-    
+
     if (diffMinutes < 60) {
       const unit = diffMinutes === 1 ? 'minute' : 'minutes';
       return diffMs >= 0 ? `in ${diffMinutes} ${unit}` : `${diffMinutes} ${unit} ago`;
     }
-    
+
     if (diffHours < 24) {
       const unit = diffHours === 1 ? 'hour' : 'hours';
       return diffMs >= 0 ? `in ${diffHours} ${unit}` : `${diffHours} ${unit} ago`;
     }
-    
+
     if (diffDays < 7) {
       const unit = diffDays === 1 ? 'day' : 'days';
       return diffMs >= 0 ? `in ${diffDays} ${unit}` : `${diffDays} ${unit} ago`;
     }
-    
+
     // For longer periods, return formatted date
     return target.toLocaleDateString();
   } catch (error) {

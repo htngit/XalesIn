@@ -8,6 +8,7 @@ import { HistoryService } from './HistoryService';
 import { QuotaService } from './QuotaService';
 import { AuthService } from './AuthService';
 import { PaymentService } from './PaymentService';
+import { MessageService } from './MessageService';
 
 interface ServiceContextType {
   templateService: TemplateService;
@@ -18,6 +19,7 @@ interface ServiceContextType {
   quotaService: QuotaService;
   authService: AuthService;
   paymentService: PaymentService;
+  messageService: MessageService;
   isInitialized: boolean;
 }
 
@@ -33,6 +35,9 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    // If we think we're ready, do nothing (wait for error handler to reset us if wrong)
+    if (isReady) return;
+
     // Check if services are already initialized
     if (serviceManager.isInitialized()) {
       setIsReady(true);
@@ -49,9 +54,9 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
       }
     }, 100); // Check every 100ms
 
-    // Cleanup on unmount
+    // Cleanup on unmount or when dependencies change
     return () => clearInterval(checkInterval);
-  }, []);
+  }, [isReady]);
 
   // Show loading state while waiting for services
   if (!isReady) {
@@ -77,6 +82,7 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
       quotaService: serviceManager.getQuotaService(),
       authService: serviceManager.getAuthService(),
       paymentService: serviceManager.getPaymentService(),
+      messageService: serviceManager.getMessageService(),
       isInitialized: true,
     };
   } catch (error) {
