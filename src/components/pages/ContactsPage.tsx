@@ -60,6 +60,7 @@ import {
 
 // Placeholder content component for when data is loaded
 function ContactsPageContent({
+  contacts,
   filteredContacts,
   paginatedContacts,
   searchQuery,

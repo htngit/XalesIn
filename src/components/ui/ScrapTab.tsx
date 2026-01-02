@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useServices } from '@/lib/services/ServiceContext';
 import { ContactGroup, Contact } from '@/lib/services/types';
 import { ScrapedBusiness } from '@/types/scraping';
