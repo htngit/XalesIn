@@ -184,25 +184,24 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                 groupId = newGroup.id;
             }
 
-            // Convert scraped data to contacts
-            const contactsToSave = Array.from(selectedIndices).map(idx => {
-                const item = results[idx];
-                return {
-                    name: item.name,
-                    phone: item.phone,
-                    group_id: groupId,
-                    tags: ['scraped', 'bing-maps'], // Default tags
-                    notes: `Address: ${item.address}\nWebsite: ${item.website || '-'}\nCategory: ${item.category || '-'}`,
-                    is_blocked: false
-                };
-            });
+            // Convert scraped data to contacts (use filtered results)
+            const contactsToSave = Array.from(selectedIndices)
+                .filter(idx => filteredResults.some(r => results.indexOf(r) === idx))
+                .map(idx => {
+                    const item = results[idx];
+                    return {
+                        name: item.name,
+                        phone: item.phone,
+                        group_id: groupId,
+                        tags: ['scraped', 'bing-maps'], // Default tags
+                        notes: `Address: ${item.address}\nWebsite: ${item.website || '-'}\nCategory: ${item.category || '-'}`,
+                        is_blocked: false
+                    };
+                });
 
-            // Save contacts
-            let successCount = 0;
-            for (const contact of contactsToSave) {
-                await contactService.createContact(contact);
-                successCount++;
-            }
+            // Save contacts in bulk for better atomicity
+            const result = await contactService.createContacts(contactsToSave);
+            const successCount = result.created;
 
             toast({
                 title: "Success",
@@ -213,6 +212,9 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
             setResults([]);
             setSelectedIndices(new Set());
             setKeyword('');
+
+            // Small delay to allow IndexedDB to finalize writes before parent reloads
+            await new Promise(resolve => setTimeout(resolve, 200));
             onContactsSaved();
 
         } catch (error) {

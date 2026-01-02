@@ -171,6 +171,16 @@ export class WhatsAppManager {
                 return;
             }
 
+            // Skip group messages and channels - only process individual chats
+            const chatId = message.from;
+            if (chatId.endsWith('@g.us') || chatId.endsWith('@broadcast')) {
+                // Only log if it's not a status update (broadcast) which can be spammy
+                if (!chatId.includes('status')) {
+                    console.log('[WhatsAppManager] Skipping group/channel message:', chatId);
+                }
+                return;
+            }
+
             console.log('[WhatsAppManager] Message received:', message.from);
 
             // Forward to MessageReceiverWorker

@@ -943,6 +943,9 @@ export function SendPage() {
             const logs = data.metadata.logs;
             const processLogs = async () => {
               const sentLogs = logs.filter((l: any) => l.status === 'sent');
+              const assetsList = getSelectedAssets();
+              const firstAsset = assetsList.length > 0 ? assetsList[0] : undefined;
+
               for (const log of sentLogs) {
                 try {
                   await messageService.createOutboundMessage({
@@ -950,7 +953,10 @@ export function SendPage() {
                     contact_phone: log.contact_phone,
                     contact_name: log.contact_name,
                     content: log.content || selectedTemplateData?.name || 'Message Sent',
-                    activity_log_id: createdLog.id
+                    activity_log_id: createdLog.id,
+                    has_media: assetsList.length > 0,
+                    media_url: firstAsset?.url || firstAsset?.file_url,
+                    message_type: firstAsset?.category || 'text'
                   });
                 } catch (e) {
                   console.error('Failed to sync message to inbox:', e);

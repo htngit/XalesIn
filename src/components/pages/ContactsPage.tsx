@@ -602,7 +602,7 @@ export function ContactsPage() {
       setError(null);
 
       const [contactsData, groupsData] = await Promise.all([
-        contactService.getContacts(),
+        contactService.getContacts(), // Fetches fresh data from Dexie
         groupService.getGroups()
       ]);
       setContacts(contactsData);
