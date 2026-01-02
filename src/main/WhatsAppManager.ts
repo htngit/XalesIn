@@ -162,26 +162,26 @@ export class WhatsAppManager {
         // including messages sent from your own phone (e.g., replying from phone)
         // 'message' event ONLY captures incoming messages from others
         this.client.on('message_create', async (message: Message) => {
-            // Skip messages sent FROM this WhatsApp Web session (outbound from app)
-            // But allow messages from the same number if sent from phone (different device)
-            if (message.fromMe) {
-                // This is a message sent from this WhatsApp session (via app)
-                // We already save these when sendMessage() is called, so skip
-                console.log('[WhatsAppManager] Skipping outbound message from this session:', message.id._serialized);
-                return;
-            }
+            // Determine the remote chat ID (who we are talking to)
+            // If from me, target is 'to'. If from other, target is 'from'.
+            const remoteChatId = message.fromMe ? message.to : message.from;
 
-            // Skip group messages and channels - only process individual chats
-            const chatId = message.from;
-            if (chatId.endsWith('@g.us') || chatId.endsWith('@broadcast')) {
+            // 1. FILTER: Ignore Group and Broadcast messages
+            // We only support individual chats for now
+            if (remoteChatId.endsWith('@g.us') || remoteChatId.endsWith('@broadcast')) {
                 // Only log if it's not a status update (broadcast) which can be spammy
-                if (!chatId.includes('status')) {
-                    console.log('[WhatsAppManager] Skipping group/channel message:', chatId);
+                if (!remoteChatId.includes('status')) {
+                    // console.log('[WhatsAppManager] Skipping group/channel message:', remoteChatId);
                 }
                 return;
             }
 
-            console.log('[WhatsAppManager] Message received:', message.from);
+            // 2. LOGGING
+            console.log(`[WhatsAppManager] Message received (FromMe: ${message.fromMe}): ${remoteChatId}`);
+
+            // Note: We used to skip fromMe messages to avoid duplicates with local inserts.
+            // However, relying on this event ensures we get the *real* WhatsApp Message ID and timestamp.
+            // The frontend/service should handle "upsert" logic to avoid duplication if it already saved a temporary version.
 
             // Forward to MessageReceiverWorker
             if (this.messageReceiverWorker) {
@@ -196,7 +196,8 @@ export class WhatsAppManager {
                         body: message.body,
                         type: message.type,
                         timestamp: message.timestamp,
-                        hasMedia: message.hasMedia
+                        hasMedia: message.hasMedia,
+                        fromMe: message.fromMe
                     });
                 }
             }
@@ -206,27 +207,101 @@ export class WhatsAppManager {
     /**
      * Connect to WhatsApp
      */
-    async connect(): Promise<boolean> {
+    /**
+     * Connect to WhatsApp
+     * @param force - Force a fresh connection (kill old browser/session)
+     */
+    async connect(force: boolean = false): Promise<boolean> {
         try {
-            console.log('[WhatsAppManager] Connecting...');
-
-            if (!this.client) {
-                throw new Error('Client not initialized');
-            }
-
-            // Don't initialize if already ready
+            // 1. Check existing states
             if (this.status === 'ready') {
+                if (force) {
+                    console.log('[WhatsAppManager] Force connect requested while ready. Disconnecting first...');
+                    // Optional: disconnect first if you want to support "Restart" behavior
+                    // For now, let's assume if it's ready, we might want to check if it's responsive? 
+                    // But per user request "connected gak masalah", we can skip.
+                    // However, if user clicks "Connect" maybe they know it's broken. 
+                    // Let's rely on the "stuck" part.
+                    // If user clicks Connect, they probably want to verify connection. 
+                    // Let's blindly trust 'ready' for now to avoid accidental disconnects, 
+                    // unless we want to be strict.
+                    // User said: "kecuali background proses emang udah connecting dan connected gak masalah"
+                    // So if connected, we leave it.
+                    console.log('[WhatsAppManager] Already connected. Skipping force connect.');
+                    return true;
+                }
                 console.log('[WhatsAppManager] Already connected');
                 return true;
             }
 
-            // Reset status to connecting before initializing
+            if (this.status === 'connecting') {
+                if (!force) {
+                    console.log('[WhatsAppManager] Already connecting. Background process active.');
+                    return false;
+                }
+                console.warn('[WhatsAppManager] Connection in progress but Force requested. Killing old session...');
+            }
+
+            console.log(`[WhatsAppManager] Starting connection (Force: ${force})...`);
+
+            // 2. Set status
             this.status = 'connecting';
             this.broadcastStatus('connecting');
 
-            await this.client.initialize();
+            // 3. Force Reset: Destroy existing client/browser
+            if (this.client) {
+                try {
+                    console.log('[WhatsAppManager] Destroying previous client...');
+                    await this.client.destroy();
+                } catch (e) {
+                    console.warn('[WhatsAppManager] Error destroying client:', e);
+                }
+                this.client = null;
+            }
+
+            // 4. Initialize new Client
+            await this.initializeClient();
+
+            if (!this.client) {
+                throw new Error('Failed to initialize WhatsApp client');
+            }
+
+            // 5. Attempt connection with Retry Logic
+            try {
+                await (this.client as Client).initialize();
+            } catch (initError: any) {
+                // Handle "Execution context was destroyed" / "Protocol error"
+                if (initError.message && (
+                    initError.message.includes('Execution context was destroyed') ||
+                    initError.message.includes('Protocol error')
+                )) {
+                    console.warn('[WhatsAppManager] Protocol error during init. Retrying in 2s...', initError.message);
+
+                    // Cleanup failed attempt
+                    if (this.client) {
+                        try { await (this.client as Client).destroy(); } catch (_) { }
+                    }
+                    this.client = null;
+
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
+                    // Retry once
+                    await this.initializeClient();
+
+                    // TS Workaround: explicit check
+                    if (this.client) {
+                        console.log('[WhatsAppManager] Retrying initialization...');
+                        await (this.client as Client).initialize();
+                    } else {
+                        throw new Error('Failed to re-initialize client during retry');
+                    }
+                } else {
+                    throw initError;
+                }
+            }
+
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[WhatsAppManager] Connection error:', error);
             this.status = 'disconnected';
             this.broadcastStatus('disconnected');

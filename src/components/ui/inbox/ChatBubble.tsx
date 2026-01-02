@@ -68,14 +68,42 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                     : "bg-card text-card-foreground rounded-bl-md border border-border"
             )}>
                 {/* Message Content */}
+                {/* Media Content */}
                 {message.has_media && message.media_url && (
                     <div className="mb-2">
-                        <img
-                            src={message.media_url}
-                            alt="Media"
-                            className="max-w-full rounded-lg"
-                            style={{ maxHeight: '300px' }}
-                        />
+                        {message.message_type === 'video' || message.message_type?.startsWith('video/') ? (
+                            <video
+                                src={message.media_url}
+                                controls
+                                className="max-w-full rounded-lg max-h-[300px]"
+                            />
+                        ) : message.message_type === 'ptt' || message.message_type === 'audio' || message.message_type?.startsWith('audio/') ? (
+                            <audio
+                                src={message.media_url}
+                                controls
+                                className="max-w-full"
+                            />
+                        ) : message.message_type === 'document' || (message.message_type && !message.message_type.startsWith('image/') && message.message_type !== 'image') ? (
+                            <a
+                                href={message.media_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 p-3 bg-background/20 rounded-lg hover:bg-background/30 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                <span className="underline text-sm">Download File</span>
+                            </a>
+                        ) : (
+                            <img
+                                src={message.media_url}
+                                alt="Media"
+                                className="max-w-full rounded-lg"
+                                style={{ maxHeight: '300px' }}
+                            />
+                        )}
                     </div>
                 )}
 

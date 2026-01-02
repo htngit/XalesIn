@@ -523,8 +523,15 @@ export class ContactService {
       const syncMetadata = addSyncMetadata({}, false);
 
       // Prepare local contact data with required timestamps
+      // STRICT PHONE NORMALIZATION
+      let normalizedPhone = contactData.phone.replace(/[^\d]/g, '');
+      if (normalizedPhone.startsWith('0')) {
+        normalizedPhone = '62' + normalizedPhone.slice(1);
+      }
+
       const newLocalContact: Omit<LocalContact, 'id'> = {
         ...contactData,
+        phone: normalizedPhone,
         master_user_id: masterUserId,
         created_by: user.id,
         is_blocked: contactData.is_blocked || false,
@@ -600,8 +607,15 @@ export class ContactService {
       for (const contactData of contactsData) {
         try {
           const contactId = crypto.randomUUID();
+          // STRICT PHONE NORMALIZATION
+          let normalizedPhone = contactData.phone.replace(/[^\d]/g, '');
+          if (normalizedPhone.startsWith('0')) {
+            normalizedPhone = '62' + normalizedPhone.slice(1);
+          }
+
           const newLocalContact: Omit<LocalContact, 'id'> = {
             ...contactData,
+            phone: normalizedPhone,
             master_user_id: masterUserId,
             created_by: user.id,
             is_blocked: contactData.is_blocked || false,

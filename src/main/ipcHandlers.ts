@@ -56,7 +56,7 @@ export const setupIPC = (
                 throw new Error('WhatsAppManager not initialized');
             }
 
-            const result = await whatsappManager.connect();
+            const result = await whatsappManager.connect(true);
             return { success: true, connected: result };
         } catch (error) {
             console.error('[IPC] whatsapp:connect error:', error);

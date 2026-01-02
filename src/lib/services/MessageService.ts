@@ -302,6 +302,9 @@ export class MessageService {
         type: string;
         timestamp: number;
         hasMedia: boolean;
+        fromMe?: boolean;
+        mediaUrl?: string;
+        mediaMimeType?: string;
     }): Promise<Message> {
         // Check for duplicate by whatsapp_message_id
         const existing = await db.messages
@@ -314,9 +317,18 @@ export class MessageService {
             return this.transformLocalMessages([existing])[0];
         }
 
+        // Determine if outbound (sent from phone) or inbound
+        const isOutbound = data.fromMe || false;
+
+        // Use 'to' as contact phone if outbound, 'from' if inbound
+        const rawPhone = isOutbound ? data.to : data.from;
+        let normalizedPhone = rawPhone.replace('@c.us', '').replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) {
+            normalizedPhone = '62' + normalizedPhone.slice(1);
+        }
+
         // Try to find contact by phone
         const masterUserId = await this.getMasterUserId();
-        const normalizedPhone = data.from.replace('@c.us', '').replace(/[^\d]/g, '');
 
         let contactId: string | undefined;
         let contactName: string | undefined;
@@ -336,11 +348,12 @@ export class MessageService {
             contact_id: contactId,
             contact_phone: normalizedPhone,
             contact_name: contactName,
-            direction: 'inbound',
+            direction: isOutbound ? 'outbound' : 'inbound',
             content: data.body,
             message_type: data.type,
             has_media: data.hasMedia,
-            status: 'received',
+            media_url: data.mediaUrl,
+            status: isOutbound ? 'sent' : 'received',
             whatsapp_message_id: data.id,
             sent_at: toISOString(new Date(data.timestamp * 1000))
         });
@@ -359,9 +372,15 @@ export class MessageService {
         media_url?: string;
         message_type?: string;
     }): Promise<Message> {
+        // Strict Normalization
+        let normalizedPhone = data.contact_phone.replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) {
+            normalizedPhone = '62' + normalizedPhone.slice(1);
+        }
+
         return this.createMessage({
             contact_id: data.contact_id,
-            contact_phone: data.contact_phone,
+            contact_phone: normalizedPhone,
             contact_name: data.contact_name,
             direction: 'outbound',
             content: data.content,

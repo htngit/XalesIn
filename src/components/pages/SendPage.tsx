@@ -956,7 +956,7 @@ export function SendPage() {
                     activity_log_id: createdLog.id,
                     has_media: assetsList.length > 0,
                     media_url: firstAsset?.url || firstAsset?.file_url,
-                    message_type: firstAsset?.category || 'text'
+                    message_type: (firstAsset?.category || 'text').toLowerCase()
                   });
                 } catch (e) {
                   console.error('Failed to sync message to inbox:', e);

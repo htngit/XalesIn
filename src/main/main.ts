@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, protocol, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { setupIPC } from './ipcHandlers';
@@ -193,6 +193,15 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+    // Register custom protocol for local media
+    protocol.handle('media', (request) => {
+        const filePath = request.url.replace('media://', '');
+        const decodedPath = decodeURIComponent(filePath);
+        // Map to userData/media
+        const fullPath = path.join(app.getPath('userData'), 'media', decodedPath);
+        return net.fetch('file://' + fullPath);
+    });
+
     await createWindow();
 
     app.on('activate', () => {

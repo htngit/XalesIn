@@ -148,3 +148,8 @@ Desktop.ini
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# Additional Build Artifacts
+release/
+out/
+.vite/

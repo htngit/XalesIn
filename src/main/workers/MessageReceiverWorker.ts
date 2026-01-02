@@ -1,6 +1,8 @@
 import { WhatsAppManager } from '../WhatsAppManager';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import { Message } from 'whatsapp-web.js';
+import fs from 'fs';
+import path from 'path';
 
 export class MessageReceiverWorker {
     // private whatsappManager: WhatsAppManager; // Removed unused property
@@ -54,7 +56,40 @@ export class MessageReceiverWorker {
                 // Note: Will need whatsappManager for this in the future
             }
 
-            // 2. Broadcast to Renderer with cleaned phone number
+            // 2. Handle Media (Download if present)
+            let mediaUrl: string | undefined;
+            let mediaMimeType: string | undefined;
+
+            if (message.hasMedia) {
+                try {
+                    console.log('[MessageReceiverWorker] Downloading media for message:', message.id._serialized);
+                    const media = await message.downloadMedia();
+                    if (media) {
+                        // Create media directory if not exists
+                        const mediaDir = path.join(app.getPath('userData'), 'media');
+                        if (!fs.existsSync(mediaDir)) {
+                            fs.mkdirSync(mediaDir, { recursive: true });
+                        }
+
+                        // Generate filename
+                        const extension = media.mimetype.split('/')[1]?.split(';')[0] || 'bin';
+                        const filename = `${message.timestamp}-${message.id.id}.${extension}`;
+                        const filePath = path.join(mediaDir, filename);
+
+                        // Save file
+                        fs.writeFileSync(filePath, media.data, 'base64');
+                        console.log('[MessageReceiverWorker] Media saved to:', filePath);
+
+                        // Set media URL for frontend (using custom protocol)
+                        mediaUrl = `media://${filename}`;
+                        mediaMimeType = media.mimetype;
+                    }
+                } catch (mediaError) {
+                    console.error('[MessageReceiverWorker] Failed to download media:', mediaError);
+                }
+            }
+
+            // 3. Broadcast to Renderer with cleaned phone number
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 this.mainWindow.webContents.send('whatsapp:message-received', {
                     id: message.id._serialized,
@@ -64,6 +99,8 @@ export class MessageReceiverWorker {
                     type: message.type,
                     timestamp: message.timestamp,
                     hasMedia: message.hasMedia,
+                    mediaUrl: mediaUrl,
+                    mediaMimeType: mediaMimeType,
                     isUnsubscribeRequest: isUnsubscribe
                 });
             }
