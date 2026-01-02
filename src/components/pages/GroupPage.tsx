@@ -63,6 +63,7 @@ export function GroupPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ContactGroup | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<ContactGroup | null>(null);
+  const [deleteContactsToo, setDeleteContactsToo] = useState(false);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [formData, setFormData] = useState({
@@ -175,20 +176,38 @@ export function GroupPage() {
     if (!groupToDelete) return;
 
     try {
+      // Optionally delete contacts too
+      if (deleteContactsToo) {
+        const affiliatedContactIds = contacts
+          .filter(c => c.group_id === groupToDelete.id)
+          .map(c => c.id);
+        if (affiliatedContactIds.length > 0) {
+          await contactService.deleteMultipleContacts(affiliatedContactIds);
+        }
+      }
+
       const success = await groupService.deleteGroup(groupToDelete.id);
       if (success) {
         setGroups(prev => prev.filter(g => g.id !== groupToDelete.id));
-        // Also update contacts that belonged to this group
-        setContacts(prev => prev.map(contact =>
-          contact.group_id === groupToDelete.id ? { ...contact, group_id: 'group_regular' } : contact
-        ));
+
+        // Update local contacts state: either filter out deleted ones or reset group_id
+        if (deleteContactsToo) {
+          setContacts(prev => prev.filter(c => c.group_id !== groupToDelete.id));
+        } else {
+          setContacts(prev => prev.map(contact =>
+            contact.group_id === groupToDelete.id ? { ...contact, group_id: 'group_regular' } : contact
+          ));
+        }
 
         setIsDeleteDialogOpen(false);
         setGroupToDelete(null);
+        setDeleteContactsToo(false);
 
         toast({
           title: "Success",
-          description: "Group deleted successfully",
+          description: deleteContactsToo
+            ? `Group and ${contacts.filter(c => c.group_id === groupToDelete.id).length} contacts deleted`
+            : "Group deleted successfully",
           variant: "default"
         });
       } else {
@@ -613,8 +632,8 @@ export function GroupPage() {
                       />
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto border rounded">
-                      <Table>
+                    <div className="max-h-64 overflow-y-auto overflow-x-auto border rounded">
+                      <Table className="table-fixed w-full">
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-12">
@@ -650,15 +669,15 @@ export function GroupPage() {
                                   }}
                                 />
                               </TableCell>
-                              <TableCell className="font-medium">{contact.name}</TableCell>
+                              <TableCell className="font-medium truncate max-w-[150px]">{contact.name}</TableCell>
                               <TableCell>
                                 <div className="flex items-center space-x-2">
-                                  <Phone className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-sm">{contact.phone}</span>
+                                  <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                  <span className="text-sm truncate">{contact.phone}</span>
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline" className="text-xs truncate max-w-[120px]">
                                   {groups.find(g => g.id === contact.group_id)?.name || 'Unknown'}
                                 </Badge>
                               </TableCell>
@@ -687,24 +706,55 @@ export function GroupPage() {
         </Dialog>
 
         {/* Delete Confirmation Dialog */}
-        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) {
+            setGroupToDelete(null);
+            setDeleteContactsToo(false);
+          }
+        }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
               <AlertDialogDescription>
                 This action cannot be undone. This will permanently delete the group
-                "{groupToDelete?.name}". Contacts in this group will be moved to the default group.
+                "{groupToDelete?.name}".
               </AlertDialogDescription>
             </AlertDialogHeader>
+
+            <div className="py-4 space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="deleteContactsToo"
+                  checked={deleteContactsToo}
+                  onCheckedChange={(checked) => setDeleteContactsToo(checked === true)}
+                />
+                <label htmlFor="deleteContactsToo" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Also delete all {getGroupContacts(groupToDelete?.id || '').length} contacts in this group
+                </label>
+              </div>
+              {!deleteContactsToo && (
+                <p className="text-sm text-muted-foreground">
+                  Contacts will be moved to the default group.
+                </p>
+              )}
+              {deleteContactsToo && (
+                <p className="text-sm text-red-600">
+                  ⚠️ This will permanently delete all contacts in this group!
+                </p>
+              )}
+            </div>
+
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => {
                 setIsDeleteDialogOpen(false);
                 setGroupToDelete(null);
+                setDeleteContactsToo(false);
               }}>
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction onClick={handleDeleteGroup} className="bg-red-600 hover:bg-red-700">
-                Delete
+                {deleteContactsToo ? `Delete Group & Contacts` : `Delete Group Only`}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

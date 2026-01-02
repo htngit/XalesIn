@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useServices } from '@/lib/services/ServiceContext';
-import { ContactGroup } from '@/lib/services/types';
+import { ContactGroup, Contact } from '@/lib/services/types';
 import { ScrapedBusiness } from '@/types/scraping';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,10 +22,11 @@ import { Search, Loader2, RefreshCw, Save, Phone, Globe, Minimize2, Eye, Filter 
 
 interface ScrapTabProps {
     groups: ContactGroup[];
+    existingContacts?: Contact[]; // Optional to avoid breaking other usages if any
     onContactsSaved: () => void;
 }
 
-export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
+export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: ScrapTabProps) {
     const { contactService, groupService } = useServices();
 
     // State
@@ -53,6 +54,22 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
         if (filterType === 'landline') return !isMobile;
         return true;
     });
+
+    // Existing Contacts Map (normalize keys)
+    const existingPhoneSet = useMemo(() => {
+        const set = new Set<string>();
+        existingContacts?.forEach(c => {
+            if (c.phone) set.add(c.phone.replace(/[^\d]/g, ''));
+        });
+        return set;
+    }, [existingContacts]);
+
+    // Check availability helper
+    const isContactExists = (phone: string) => {
+        if (!phone) return false;
+        const normalized = phone.replace(/[^\d]/g, '');
+        return existingPhoneSet.has(normalized);
+    };
 
     // Saving State
     const [targetGroupId, setTargetGroupId] = useState<string>('new');
@@ -142,9 +159,11 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            // Only select visible filtered results
-            const visibleIndices = filteredResults.map(item => results.indexOf(item));
-            setSelectedIndices(new Set(visibleIndices));
+            // Select only visible results that are NOT existing in DB
+            const validIndices = filteredResults
+                .filter(r => !isContactExists(r.phone))
+                .map(item => results.indexOf(item));
+            setSelectedIndices(new Set(validIndices));
         } else {
             setSelectedIndices(new Set());
         }
@@ -392,18 +411,27 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                                 <TableBody>
                                     {filteredResults.map((item) => {
                                         const index = results.indexOf(item); // Get original index for selection
+                                        const isExisting = isContactExists(item.phone);
+                                        const isRowDisabled = !item.phone || isExisting;
+
                                         return (
-                                            <TableRow key={index} className={!item.phone ? 'opacity-50 bg-muted/30' : ''}>
+                                            <TableRow key={index} className={isRowDisabled ? 'opacity-50 bg-muted/30' : ''}>
                                                 <TableCell>
                                                     <Checkbox
                                                         checked={selectedIndices.has(index)}
-                                                        onCheckedChange={(c) => handleSelectRow(index, c as boolean)}
+                                                        onCheckedChange={(c) => {
+                                                            if (!isRowDisabled) handleSelectRow(index, c as boolean)
+                                                        }}
+                                                        disabled={isRowDisabled}
                                                     />
                                                 </TableCell>
-                                                <TableCell className="font-medium">{item.name}</TableCell>
+                                                <TableCell className="font-medium text-xs">
+                                                    {item.name}
+                                                    {isExisting && <span className="block text-[10px] text-red-500 font-semibold">(Already Saved)</span>}
+                                                </TableCell>
                                                 <TableCell>
                                                     {item.phone ? (
-                                                        <div className="flex items-center text-green-600">
+                                                        <div className={`flex items-center ${isExisting ? 'text-red-500' : 'text-green-600'}`}>
                                                             <Phone className="mr-2 h-3 w-3" />
                                                             {item.phone}
                                                         </div>
@@ -411,7 +439,7 @@ export function ScrapTab({ groups, onContactsSaved }: ScrapTabProps) {
                                                         <span className="text-muted-foreground text-xs italic">No phone</span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="max-w-[300px] truncate" title={item.address}>{item.address}</TableCell>
+                                                <TableCell className="max-w-[300px] truncate text-xs" title={item.address}>{item.address}</TableCell>
                                                 <TableCell>
                                                     {item.website && (
                                                         <a href={item.website} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline flex items-center">

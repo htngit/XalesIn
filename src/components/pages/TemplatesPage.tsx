@@ -278,7 +278,7 @@ export function TemplatesPage() {
                       <Label htmlFor={`template-variant-${index}`}>{intl.formatMessage({ id: 'templates.form.variant.label', defaultMessage: 'Variant {number}' }, { number: index + 1 })}</Label>
                       <Textarea
                         id={`template-variant-${index}`}
-                        placeholder={intl.formatMessage({ id: 'templates.form.variant.placeholder', defaultMessage: 'Enter variant {number} message content. Use {variable} for dynamic content.' }, { number: index + 1, variable: '{variable_name}' })}
+                        placeholder={intl.formatMessage({ id: 'templates.form.variant.placeholder', defaultMessage: 'Enter variant {number} message content. Support: {{name}}, {{phone}}, {{notes}}. Use {{key}} for other custom fields.' }, { number: index + 1 })}
                         value={variant}
                         onChange={(e) => {
                           const newVariants = [...formData.variants];
@@ -301,7 +301,7 @@ export function TemplatesPage() {
                   ))}
                   <div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {intl.formatMessage({ id: 'templates.form.helper.variables', defaultMessage: 'Use {variable} for dynamic content (e.g., {name}, {amount}, {date}). Each variant provides a different message version for randomization.' }, { variable: '{variable_name}', name: '{name}', amount: '{amount}', date: '{date}' })}
+                      {intl.formatMessage({ id: 'templates.form.help', defaultMessage: 'Use double curly braces for dynamic content. Supported: {{name}}, {{phone}}, {{notes}}. Custom fields (e.g., {{company}}) are also supported if they exist in contact details. Each variant provided enables message randomization.' })}
                     </p>
                   </div>
                 </div>
@@ -410,7 +410,7 @@ export function TemplatesPage() {
                     <Label htmlFor={`edit-template-variant-${index}`}>{intl.formatMessage({ id: 'templates.form.variant.label', defaultMessage: 'Variant {number}' }, { number: index + 1 })}</Label>
                     <Textarea
                       id={`edit-template-variant-${index}`}
-                      placeholder={intl.formatMessage({ id: 'templates.form.variant.placeholder', defaultMessage: 'Enter variant {number} message content. Use {variable} for dynamic content.' }, { number: index + 1, variable: '{variable_name}' })}
+                      placeholder={intl.formatMessage({ id: 'templates.form.variant.placeholder', defaultMessage: 'Enter variant {number} message content. Support: {{name}}, {{phone}}, {{notes}}. Use {{key}} for other custom fields.' }, { number: index + 1 })}
                       value={variant}
                       onChange={(e) => {
                         const newVariants = [...formData.variants];
@@ -433,7 +433,7 @@ export function TemplatesPage() {
                 ))}
                 <div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {intl.formatMessage({ id: 'templates.form.helper.variables', defaultMessage: 'Use {variable} for dynamic content (e.g., {name}, {amount}, {date}). Each variant provides a different message version for randomization.' }, { variable: '{variable_name}', name: '{name}', amount: '{amount}', date: '{date}' })}
+                    {intl.formatMessage({ id: 'templates.form.help', defaultMessage: 'Use double curly braces for dynamic content. Supported: {{name}}, {{phone}}, {{notes}}. Custom fields (e.g., {{company}}) are also supported if they exist in contact details. Each variant provided enables message randomization.' })}
                   </p>
                 </div>
               </div>

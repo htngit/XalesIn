@@ -404,7 +404,7 @@ function ContactsPageContent({
             </TabsContent>
 
             <TabsContent value="scrap">
-              <ScrapTab groups={groups} onContactsSaved={onRefresh} />
+              <ScrapTab groups={groups} existingContacts={contacts} onContactsSaved={onRefresh} />
             </TabsContent>
           </Tabs>
         </FadeIn>
@@ -643,7 +643,7 @@ export function ContactsPage() {
     setFilteredContacts(filtered);
     // Reset to first page when contacts or search query changes
     setCurrentPage(1);
-  }, [contacts, searchQuery]);
+  }, [contacts, searchQuery, groups]);
 
   // Pagination effect - calculate paginated contacts
   const paginatedContacts = useMemo(() => {

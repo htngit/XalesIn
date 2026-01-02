@@ -95,8 +95,9 @@ export class ContactService {
 
   /**
    * Get master user ID (for multi-tenant support)
+   * @param options.strict If true, throws error if profile fetch fails instead of falling back to user.id
    */
-  private async getMasterUserId(): Promise<string> {
+  private async getMasterUserId(options: { strict?: boolean } = {}): Promise<string> {
     if (this.masterUserId) {
       return this.masterUserId;
     }
@@ -112,6 +113,9 @@ export class ContactService {
 
     if (error) {
       console.error('Error fetching user profile:', error);
+      if (options.strict) {
+        throw new Error(`Failed to resolve master user ID: ${error.message}`);
+      }
       return user.id; // Fallback to current user ID
     }
 
@@ -217,11 +221,14 @@ export class ContactService {
       const isOnline = this.syncManager.getIsOnline();
 
       // First, try to get from local database
+      console.log('Fetching contacts for masterUserId:', masterUserId);
       let localContacts = await db.contacts
         .where('master_user_id')
         .equals(masterUserId)
         .and(contact => !contact._deleted)
         .toArray();
+
+      console.log('Local contacts found:', localContacts.length);
 
       // If we have local data, return it immediately (offline-first approach)
       if (localContacts.length > 0) {
@@ -595,7 +602,7 @@ export class ContactService {
       }
 
       const user = await this.getCurrentUser();
-      const masterUserId = await this.getMasterUserId();
+      const masterUserId = await this.getMasterUserId({ strict: true });
       const isOnline = this.syncManager.getIsOnline();
       const timestamps = addTimestamps({}, false);
       const syncMetadata = addSyncMetadata({}, false);
@@ -603,6 +610,12 @@ export class ContactService {
       const localContacts: LocalContact[] = [];
       const syncQueueItems: any[] = [];
       const errors: string[] = [];
+
+      console.log('Creating contacts:', {
+        count: contactsData.length,
+        masterUserId,
+        user: user.id
+      });
 
       for (const contactData of contactsData) {
         try {
