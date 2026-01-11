@@ -35,38 +35,31 @@ const createWindow = async () => {
     let iconPath;
     try {
         if (process.env.VITE_DEV_SERVER_URL) {
-            // Development mode - use absolute path to public directory
-            const publicPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.png');
-            console.log('[Main] Development mode - trying icon path:', publicPath);
-
-            // Check if file exists before using it
-            const fileExistsResult = await fileExists(publicPath);
-            if (fileExistsResult) {
-                iconPath = publicPath;
-            } else {
-                console.warn('[Main] Development icon not found, falling back to default');
-                iconPath = undefined;
-            }
+            // Development mode - use path relative to project root
+            iconPath = path.join(app.getAppPath(), 'public', 'icon.png');
+            console.log('[Main] Development mode - trying icon path:', iconPath);
         } else {
-            // Production mode - use icon.ico from full path
-            const productionIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
-            console.log('[Main] Production mode - trying icon path:', productionIconPath);
+            // Production mode
+            // On Windows, use .ico if available, otherwise .png
+            // On Mac/Linux, .png is preferred
+            const iconExt = process.platform === 'win32' ? 'ico' : 'png';
+            iconPath = path.join(app.getAppPath(), 'public', `icon.${iconExt}`);
 
-            // Check if file exists before using it
-            const fileExistsResult = await fileExists(productionIconPath);
-            if (fileExistsResult) {
-                iconPath = productionIconPath;
-            } else {
-                // Fallback to resources path if icon.ico not found in app directory
-                const resourcesIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
-                console.log('[Main] Fallback icon path:', resourcesIconPath);
-                const resourcesFileExists = await fileExists(resourcesIconPath);
-                iconPath = resourcesFileExists ? resourcesIconPath : undefined;
+            // If the extension-specific icon doesn't exist, try the other one
+            if (!fs.existsSync(iconPath)) {
+                iconPath = path.join(app.getAppPath(), 'public', 'icon.png');
             }
+
+            console.log('[Main] Production mode - trying icon path:', iconPath);
+        }
+
+        // Final check if file exists
+        if (iconPath && !fs.existsSync(iconPath)) {
+            console.warn('[Main] Icon not found at:', iconPath);
+            iconPath = undefined;
         }
     } catch (error) {
         console.error('[Main] Error determining icon path:', error);
-        // Use default Electron icon if path resolution fails
         iconPath = undefined;
     }
 

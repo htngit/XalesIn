@@ -13,10 +13,26 @@ asarUnpack:
   - "**/whatsapp-web.js/**/*"
 win:
   target: nsis
-  icon: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+  icon: public/icon.ico
+mac:
+  target:
+    - dmg
+    - zip
+  icon: public/icon.png
+  category: public.app-category.business
+dmg:
+  contents:
+    - x: 130
+      y: 150
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
 extraResources:
-  - from: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+  - from: public/icon.ico
     to: icon.ico
+  - from: public/icon.png
+    to: icon.png
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
