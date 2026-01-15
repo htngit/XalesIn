@@ -24,6 +24,7 @@ export interface WhatsAppAPI {
     onQRCode: (callback: (qr: string) => void) => () => void;
     onStatusChange: (callback: (status: string) => void) => () => void;
     onMessageReceived: (callback: (data: any) => void) => () => void;
+    onContactsReceived: (callback: (contacts: any[]) => void) => () => void;
     onError: (callback: (error: any) => void) => () => void;
     onJobProgress: (callback: (progress: any) => void) => () => void;
     onJobErrorDetail: (callback: (errorDetail: any) => void) => () => void;
@@ -94,6 +95,14 @@ contextBridge.exposeInMainWorld('electron', {
             };
         },
 
+        onContactsReceived: (callback: (contacts: any[]) => void) => {
+            const subscription = (_event: IpcRendererEvent, contacts: any[]) => callback(contacts);
+            ipcRenderer.on('whatsapp:contacts-received', subscription);
+
+            return () => {
+                ipcRenderer.removeListener('whatsapp:contacts-received', subscription);
+            };
+        },
 
         onError: (callback: (error: any) => void) => {
             const subscription = (_event: IpcRendererEvent, error: any) => callback(error);

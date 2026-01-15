@@ -17,7 +17,14 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['whatsapp-web.js', 'puppeteer', 'qrcode-terminal']
+              external: [
+                'puppeteer',
+                'qrcode-terminal',
+                '@whiskeysockets/baileys',
+                'pino',
+                'bufferutil',
+                'utf-8-validate'
+              ]
             }
           }
         }

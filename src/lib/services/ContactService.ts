@@ -690,6 +690,122 @@ export class ContactService {
   }
 
   /**
+   * Sync contacts from WhatsApp (Upsert operation)
+   * Prevents duplicates by checking existing phone numbers.
+   */
+  async upsertContactsFromWhatsApp(waContacts: Array<{ phone: string; name?: string }>): Promise<{ added: number; updated: number; errors: number }> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      const user = await this.getCurrentUser();
+      const timestamps = addTimestamps({}, false);
+
+      // 1. Get all local contacts for quick lookup
+      const existingContacts = await db.contacts
+        .where('master_user_id')
+        .equals(masterUserId)
+        .and(c => !c._deleted)
+        .toArray();
+
+      const phoneMap = new Map<string, LocalContact>();
+      existingContacts.forEach(c => {
+        // Normalize stored phone for map key
+        const p = c.phone.replace(/[^\d]/g, '');
+        phoneMap.set(p, c);
+      });
+
+      const toAdd: LocalContact[] = [];
+      const toUpdate: LocalContact[] = [];
+      const syncQueueItems: any[] = [];
+
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      for (const waContact of waContacts) {
+        // Normalize incoming phone
+        let normalizedPhone = waContact.phone.replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) normalizedPhone = '62' + normalizedPhone.slice(1);
+
+        const existing = phoneMap.get(normalizedPhone);
+        const contactName = waContact.name || existing?.name || normalizedPhone; // Prioritize WA name -> Existing name -> Phone
+
+        if (existing) {
+          // Update only if name changed (or other logic). For now, we simple update to sync names.
+          if (existing.name !== contactName && waContact.name) {
+            const updated = {
+              ...existing,
+              name: contactName,
+              // Add 'WhatsApp' tag if not present
+              tags: existing.tags ? (existing.tags.includes('WhatsApp') ? existing.tags : [...existing.tags, 'WhatsApp']) : ['WhatsApp'],
+              updated_at: timestamps.updated_at,
+              _syncStatus: 'pending' as const, // Force sync
+              _lastModified: new Date().toISOString()
+            };
+            toUpdate.push(updated);
+
+            // Queue Sync
+            syncQueueItems.push({
+              table: 'contacts',
+              type: 'update',
+              id: existing.id,
+              data: localToSupabase(updated)
+            });
+            updatedCount++;
+          }
+        } else {
+          // Insert New
+          const contactId = crypto.randomUUID();
+          const newContact: LocalContact = {
+            id: contactId,
+            master_user_id: masterUserId,
+            created_by: user.id,
+            name: contactName,
+            phone: normalizedPhone,
+            group_id: undefined, // No group initially
+            tags: ['WhatsApp'],
+            notes: 'Imported from WhatsApp',
+            is_blocked: false,
+            created_at: timestamps.created_at,
+            updated_at: timestamps.updated_at,
+            _syncStatus: 'pending',
+            _lastModified: new Date().toISOString(),
+            _version: 1,
+            _deleted: false
+          };
+          toAdd.push(newContact);
+
+          // Queue Sync
+          syncQueueItems.push({
+            table: 'contacts',
+            type: 'create',
+            id: contactId,
+            data: localToSupabase(newContact)
+          });
+          addedCount++;
+        }
+      }
+
+      // Batch Operations
+      if (toAdd.length > 0) {
+        await db.contacts.bulkAdd(toAdd);
+      }
+      if (toUpdate.length > 0) {
+        await db.contacts.bulkPut(toUpdate);
+      }
+
+      // Queue Sync Items
+      for (const item of syncQueueItems) {
+        this.syncManager.addToSyncQueue(item.table, item.type, item.id, item.data).catch(console.warn);
+      }
+
+      return { added: addedCount, updated: updatedCount, errors: 0 };
+
+    } catch (error) {
+      console.error('Error syncing WA contacts:', error);
+      return { added: 0, updated: 0, errors: 1 };
+    }
+  }
+
+  /**
    * Update an existing contact - local first with sync
    * Enforces data isolation using UserContextManager
    */

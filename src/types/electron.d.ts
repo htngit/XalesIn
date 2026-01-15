@@ -16,6 +16,7 @@ declare global {
                 onError(callback: (error: any) => void): () => void;
                 onJobProgress(callback: (data: any) => void): () => void;
                 onMessageReceived(callback: (data: any) => void): () => void;
+                onContactsReceived(callback: (contacts: any[]) => void): () => void;
                 getStatus(): Promise<{ ready: boolean }>;
                 connect(): Promise<{ success: boolean; error?: string }>;
                 disconnect(): Promise<void>;

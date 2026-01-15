@@ -196,6 +196,42 @@ const MainApp = () => {
     restoreSession();
   }, []);
 
+  // WhatsApp Contact Sync Listener
+  useEffect(() => {
+    // Only listen if PIN is validated (meaning services are initialized)
+    if (!pinData?.is_valid) return;
+
+    const unsubscribeContacts = window.electron?.whatsapp?.onContactsReceived?.(async (contacts: any[]) => {
+      console.log('[App] Received contacts from WhatsApp sync:', contacts.length);
+      try {
+        const contactService = serviceManager.getContactService();
+        // We need to map interface
+        const mapped = contacts.map(c => ({
+          phone: c.phone,
+          name: c.name
+        }));
+
+        const result = await contactService.upsertContactsFromWhatsApp(mapped);
+        console.log('[App] WhatsApp contacts synced:', result);
+
+        if (result.added > 0 || result.updated > 0) {
+          // Using sonner toast for better visibility
+          toast({
+            title: "WhatsApp Sync Complete",
+            description: `Synced ${result.added} new and updated ${result.updated} contacts.`,
+            duration: 4000
+          });
+        }
+      } catch (err) {
+        console.error('[App] Failed to sync contacts:', err);
+      }
+    });
+
+    return () => {
+      if (unsubscribeContacts) unsubscribeContacts();
+    };
+  }, [pinData]);
+
   const handleLoginSuccess = (data: AuthResponse) => {
     // Check if the current user is different from the last logged in user
     const previousUserId = userContextManager.getLastUserId();
@@ -246,6 +282,15 @@ const MainApp = () => {
       }
 
       if (masterUserId) {
+        // Fix for Initial Sync Race Condition:
+        // Ensure UserContextManager has the user before we attempt to sync.
+        // The background auth state change might be slower than the UI flow.
+        const currentUser = await userContextManager.getCurrentUser();
+        if (!currentUser && authData?.user) {
+          console.log('[App] Race condition detected: Injecting user into UserContextManager before sync');
+          await userContextManager.setCurrentUser(authData.user, authData.token, { skipDbVerification: true });
+        }
+
         syncManager.setMasterUserId(masterUserId);
 
         // 5. Check connection speed and decide sync strategy
