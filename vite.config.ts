@@ -21,9 +21,7 @@ export default defineConfig({
                 'puppeteer',
                 'qrcode-terminal',
                 '@whiskeysockets/baileys',
-                'pino',
-                'bufferutil',
-                'utf-8-validate'
+                'pino'
               ]
             }
           }

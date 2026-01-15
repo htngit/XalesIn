@@ -1,6 +1,8 @@
 {
   "name": "xender-in-whatsapp-automation",
-  "version": "0.5.3",
+  "version": "0.5.6",
+  "description": "Professional WhatsApp Automation and Messaging Solution",
+  "author": "Xalesin Group",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -51,7 +53,6 @@
     "@types/react-dropzone": "^4.2.2",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.10.0",
-    "bufferutil": "^4.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -81,7 +82,6 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "utf-8-validate": "^6.0.6",
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
     "xlsx": "^0.18.5",

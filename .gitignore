@@ -6,10 +6,15 @@ node_modules/
 .pnp.*
 
 # Production builds
-/dist
-/build
-/dist_electron
-/dist_electron_build
+dist/
+dist-*/
+dist_electron/
+dist_electron_build/
+build/
+release/
+out/
+extracted_app/
+.vite/
 
 # Environment variables
 .env
@@ -56,7 +61,6 @@ jspm_packages/
 
 # Nuxt.js build / generate output
 .nuxt
-/dist
 
 # Gatsby files
 .cache/
@@ -149,7 +153,3 @@ Desktop.ini
 # yarn.lock
 # pnpm-lock.yaml
 
-# Additional Build Artifacts
-release/
-out/
-.vite/
