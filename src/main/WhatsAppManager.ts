@@ -206,9 +206,6 @@ export class WhatsAppManager {
 
     /**
      * Connect to WhatsApp
-     */
-    /**
-     * Connect to WhatsApp
      * @param force - Force a fresh connection (kill old browser/session)
      */
     async connect(force: boolean = false): Promise<boolean> {
@@ -569,8 +566,18 @@ export class WhatsAppManager {
             console.log(`[WhatsAppManager] Message sent successfully to ${to}`);
 
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[WhatsAppManager] Send message error:', error);
+
+            // Handle specific Puppeteer "page is null" error
+            if (error?.message?.includes("Cannot read properties of null (reading 'evaluate')")) {
+                console.error('[WhatsAppManager] Critical: Browser page lost. Forcing disconnect.');
+                this.status = 'disconnected';
+                this.broadcastStatus('disconnected');
+                try { await this.disconnect(); } catch (e) { /* ignore cleanup error */ }
+                throw new Error('WhatsApp browser session lost. Please reconnect.');
+            }
+
             throw error;
         }
     }
@@ -655,6 +662,15 @@ export class WhatsAppManager {
             return true;
         } catch (error: any) {
             console.error('[WhatsAppManager] Send media message error:', error);
+
+            // Handle specific Puppeteer "page is null" error
+            if (error?.message?.includes("Cannot read properties of null (reading 'evaluate')")) {
+                console.error('[WhatsAppManager] Critical: Browser page lost. Forcing disconnect.');
+                this.status = 'disconnected';
+                this.broadcastStatus('disconnected');
+                try { await this.disconnect(); } catch (e) { /* ignore cleanup error */ }
+                throw new Error('WhatsApp browser session lost. Please reconnect.');
+            }
 
             // Check for specific Puppeteer evaluation error which usually means file too large
             if (error.message && error.message.includes('Evaluation failed')) {

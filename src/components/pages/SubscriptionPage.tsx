@@ -12,24 +12,24 @@ import { Check, CreditCard, AlertCircle } from 'lucide-react';
 
 const PLAN_CONFIG = {
   basic: {
-    name: 'Basic',
+    name: 'Gratis',
     price: 0,
-    messages_limit: 500,
-    features: ['500 messages/month', 'Basic templates', 'Email support'],
+    messages_limit: 50,
+    features: ['50 messages/month', 'Basic templates', 'Community support'],
     popular: false
   },
   premium: {
-    name: 'Premium',
-    price: 99000, // IDR 99,000
+    name: 'Dasar',
+    price: 50000, // IDR 50,000 matches website Rp 50K
     messages_limit: 1500,
     features: ['1,500 messages/month', 'Advanced templates', 'Priority support', 'Contact groups'],
     popular: true
   },
   enterprise: {
-    name: 'Enterprise',
-    price: 299000, // IDR 299,000
-    messages_limit: 5000,
-    features: ['5,000 messages/month', 'Custom templates', '24/7 support', 'API access', 'Analytics'],
+    name: 'Pro',
+    price: 100000, // IDR 100,000 matches website Rp 100K
+    messages_limit: 999999,
+    features: ['Unlimited messages/month', 'Custom templates', 'Dedicated support', 'Campaign builder', 'Automation features'],
     popular: false
   }
 };
@@ -77,7 +77,7 @@ export const SubscriptionPage: React.FC = () => {
         // Get current plan and quota from user's quota data
         // This would typically come from your quota service
         setCurrentPlan('basic'); // Placeholder
-        setQuotaUsage({ used: 125, limit: 500 }); // Placeholder
+        setQuotaUsage({ used: 0, limit: PLAN_CONFIG.basic.messages_limit }); // Updated default limit
       }
     } catch (error) {
       console.error('Error initializing user data:', error);
@@ -332,8 +332,8 @@ export const SubscriptionPage: React.FC = () => {
                   </p>
                   <div className="flex items-center justify-center gap-2 text-sm">
                     <div className={`w-3 h-3 rounded-full ${(paymentStatus as string) === 'completed' ? 'bg-green-500' :
-                        (paymentStatus as string) === 'failed' ? 'bg-red-500' :
-                          (paymentStatus as string) === 'expired' ? 'bg-red-500' : 'bg-yellow-500'
+                      (paymentStatus as string) === 'failed' ? 'bg-red-500' :
+                        (paymentStatus as string) === 'expired' ? 'bg-red-500' : 'bg-yellow-500'
                       }`} />
                     <span>
                       {(paymentStatus as string) === 'pending' ? 'Waiting for payment...' :
