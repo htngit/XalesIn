@@ -264,6 +264,40 @@ export function InboxPage() {
         }
     }, [contactService, messageService, loadConversations, selectedConversation]);
 
+    // Handle save new contact from chat
+    const handleSaveContact = useCallback(async (phone: string, name?: string) => {
+        try {
+            const newContact = await contactService.createContact({
+                phone: phone,
+                name: name || phone,
+                is_blocked: false,
+            });
+
+            toast.success(intl.formatMessage({
+                id: 'inbox.contactSaved',
+                defaultMessage: 'Contact saved successfully!'
+            }));
+
+            // Refresh conversations to update the contact_id
+            await loadConversations();
+
+            // Update selected conversation with the new contact_id
+            if (selectedConversation?.contact_phone === phone) {
+                setSelectedConversation(prev => prev ? {
+                    ...prev,
+                    contact_id: newContact.id,
+                    contact_name: newContact.name,
+                } : null);
+            }
+        } catch (error) {
+            console.error('Error saving contact:', error);
+            toast.error(intl.formatMessage({
+                id: 'inbox.contactSaveError',
+                defaultMessage: 'Failed to save contact'
+            }));
+        }
+    }, [contactService, intl, loadConversations, selectedConversation]);
+
     // Handle filter change
     const handleFilterChange = useCallback((newFilters: InboxFilters) => {
         setFilters(newFilters);
@@ -362,10 +396,10 @@ export function InboxPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            <div className="flex h-screen bg-background">
+            <div className="flex h-screen bg-background overflow-hidden">
                 {/* Sidebar: Conversation List */}
                 <div className={cn(
-                    "flex flex-col border-r border-border flex-shrink-0",
+                    "flex flex-col border-r border-border flex-shrink-0 h-full overflow-hidden",
                     "w-full md:w-[380px] lg:w-[420px]",
                     selectedConversation ? "hidden md:flex" : "flex"
                 )}>
@@ -429,6 +463,7 @@ export function InboxPage() {
                                 conversation={selectedConversation}
                                 availableTags={tags}
                                 onUpdateTags={handleUpdateTags}
+                                onSaveContact={handleSaveContact}
                                 onBack={() => setSelectedConversation(null)}
                             />
                             <ChatWindow

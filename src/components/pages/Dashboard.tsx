@@ -92,6 +92,34 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   // Get services from context
   const { authService, quotaService, paymentService } = useServices();
 
+  // Badge State
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Subscribe to Unread Count Updates
+  useEffect(() => {
+    if (!masterUserId) return;
+
+    const messageService = serviceManager.getMessageService();
+
+    const fetchUnread = async () => {
+      const count = await messageService.getUnreadCount();
+      setUnreadCount(count);
+    };
+
+    // Initial fetch
+    fetchUnread();
+
+    // Subscribe to local updates
+    const unsubscribe = messageService.subscribeToLocalUpdates(() => {
+      // Re-fetch on any message change (new msg, delete, etc)
+      fetchUnread();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [masterUserId]);
+
   // ---------------------------------------------------------------------
   // Initialization logic (runs once when user info is ready)
   // ---------------------------------------------------------------------
@@ -384,9 +412,21 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                   </p>
                 </div>
                 {menuItems.map((item) => (
-                  <Button key={item.id} variant="ghost" className="w-full justify-start gap-3" onClick={() => handleMenuClick(item.id)}>
+                  <Button 
+                    key={item.id} 
+                    variant="ghost" 
+                    className="w-full justify-start gap-3 relative" // Added relative for positioning if needed, but flex works
+                    onClick={() => handleMenuClick(item.id)}
+                  >
                     <MenuIcon iconKey={item.id} className="h-4 w-4" />
-                    {item.label}
+                    <span className="flex-1 text-left">{item.label}</span>
+                    
+                    {/* Inbox Badge */}
+                    {item.id === 'inbox' && unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </Button>
                 ))}
               </nav>

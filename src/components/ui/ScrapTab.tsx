@@ -271,9 +271,9 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
 
             <AnimatedCard animation="fadeIn">
                 <CardHeader>
-                    <CardTitle>Map Scraping (Bing Maps)</CardTitle>
+                    <CardTitle>Map Scraping</CardTitle>
                     <CardDescription>
-                        Search for businesses on Bing Maps and extract contact information.
+                        Search for businesses on maps and extract contact information.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -288,6 +288,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                     onChange={(e) => setKeyword(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && !isScraping && handleScrape()}
                                     disabled={isScraping}
+                                    className="pl-10"
                                 />
                             </div>
                         </div>

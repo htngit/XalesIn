@@ -423,10 +423,29 @@ export class AppDatabase extends Dexie {
     this.messages.hook('deleting', this.onDeleting.bind(this));
   }
 
+  // Flag to ignore hooks (for cache clearing)
+  private _ignoreHooks: boolean = false;
+
+  /**
+   * Start cache clearing mode (ignoring hooks)
+   */
+  startCacheClear() {
+    this._ignoreHooks = true;
+  }
+
+  /**
+   * End cache clearing mode
+   */
+  endCacheClear() {
+    this._ignoreHooks = false;
+  }
+
   /**
    * Enhanced creating hook with standardized timestamp utilities
    */
   private onCreating(_primKey: any, obj: any, _trans: any) {
+    if (this._ignoreHooks) return;
+
     // Add standardized sync metadata
     const syncMetadata = addSyncMetadata(obj, false);
 
@@ -448,6 +467,8 @@ export class AppDatabase extends Dexie {
    * Enhanced updating hook with standardized timestamp utilities
    */
   private onUpdating(modifications: any, _primKey: any, obj: any, _trans: any) {
+    if (this._ignoreHooks) return;
+
     // Add standardized sync metadata
     const syncMetadata = addSyncMetadata(obj, true);
 
@@ -464,6 +485,8 @@ export class AppDatabase extends Dexie {
    * Enhanced deleting hook with standardized timestamp utilities
    */
   private onDeleting(_primKey: any, obj: any, _trans: any) {
+    if (this._ignoreHooks) return;
+
     // Add standardized sync metadata for soft delete
     const syncMetadata = addSyncMetadata(obj, true);
 

@@ -123,27 +123,27 @@ export function ConversationItem({
             {/* Content */}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate">
+                    <span className="font-medium truncate block max-w-[180px]">
                         {contact_name || contact_phone}
                     </span>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 mr-5">
+                    <span className="text-[10px] text-muted-foreground flex-shrink-0">
                         {last_message?.sent_at && formatTime(last_message.sent_at)}
                     </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 mt-1">
+                <div className="flex items-center justify-between gap-2 mt-0.5">
                     <p className={cn(
-                        "text-sm truncate",
+                        "text-sm truncate max-w-[180px]",
                         unread_count > 0 ? "text-foreground font-medium" : "text-muted-foreground"
                     )}>
                         {last_message?.direction === 'outbound' && (
                             <span className="text-muted-foreground mr-1">You:</span>
                         )}
-                        {truncateMessage(last_message?.content)}
+                        {truncateMessage(last_message?.content, 35)}
                     </p>
 
                     {unread_count > 0 && (
-                        <span className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-primary text-primary-foreground text-xs font-medium flex items-center justify-center px-1.5">
+                        <span className="flex-shrink-0 min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1">
                             {unread_count > 99 ? '99+' : unread_count}
                         </span>
                     )}
@@ -151,26 +151,21 @@ export function ConversationItem({
 
                 {/* Tags and Group */}
                 {(contact_group_name || (contact_tags && contact_tags.length > 0)) && (
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <div className="flex items-center gap-1 mt-1.5 flex-nowrap overflow-hidden">
                         {contact_group_name && (
                             <Badge
                                 variant="outline"
-                                className="text-xs px-1.5 py-0 mr-5"
+                                className="text-[10px] px-1 py-0 h-4 truncate max-w-[80px]"
                                 style={contact_group_color ? { borderColor: contact_group_color, color: contact_group_color } : undefined}
                             >
                                 {contact_group_name}
                             </Badge>
                         )}
-                        {contact_tags?.slice(0, 2).map((tag) => (
-                            <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0 mr-5">
+                        {contact_tags?.slice(0, 1).map((tag) => (
+                            <Badge key={tag} variant="secondary" className="text-[10px] px-1 py-0 h-4 truncate max-w-[60px]">
                                 {tag}
                             </Badge>
                         ))}
-                        {contact_tags && contact_tags.length > 2 && (
-                            <span className="text-xs text-muted-foreground">
-                                +{contact_tags.length - 2}
-                            </span>
-                        )}
                     </div>
                 )}
             </div>

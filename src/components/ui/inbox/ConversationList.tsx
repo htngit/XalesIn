@@ -6,7 +6,6 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConversationSummary } from '@/lib/services/types';
 import { ConversationItem } from './ConversationItem';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 
 interface ConversationListProps {
@@ -114,7 +113,7 @@ export function ConversationList({
     }
 
     return (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
             {/* Search Bar & New Chat */}
             <div className="p-3 border-b border-border flex gap-2">
                 <div className="relative flex-1">
@@ -196,8 +195,8 @@ export function ConversationList({
                 </div>
             )}
 
-            {/* Conversations */}
-            <ScrollArea className="flex-1">
+            {/* Conversations - Using native scroll as fallback */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
                 {filteredConversations.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
                         {searchQuery ? (
@@ -229,7 +228,7 @@ export function ConversationList({
                         ))}
                     </div>
                 )}
-            </ScrollArea>
+            </div>
         </div>
     );
 }

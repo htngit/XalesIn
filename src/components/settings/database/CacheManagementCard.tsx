@@ -5,6 +5,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { syncManager } from '@/lib/sync/SyncManager';
 
 export function CacheManagementCard() {
     const intl = useIntl();
@@ -14,6 +15,12 @@ export function CacheManagementCard() {
     const handleClearCache = async () => {
         setIsClearing(true);
         try {
+            // Use SyncManager's robust clear cache function which:
+            // 1. Clears local Dexie DB without syncing deletions
+            // 2. Wipes sync queue
+            // 3. Forces a full re-fetch from Supabase
+            await syncManager.clearCacheAndResync();
+
             // Clear browser cache (limited to what we can control)
             if ('caches' in window) {
                 const cacheNames = await caches.keys();
@@ -21,9 +28,10 @@ export function CacheManagementCard() {
             }
 
             // Clear localStorage items (except auth)
+            // Note: master_user_id is handled by SyncManager re-fetch logic usually,
+            // but we keep auth tokens as per SyncManager requirement
             const keysToKeep = ['supabase.auth.token', 'master_user_id'];
             Object.keys(localStorage).forEach(key => {
-                // Keep Supabase auth tokens (usually start with sb- or contain auth-token)
                 if (key.startsWith('sb-') || key.includes('auth-token') || keysToKeep.some(keepKey => key.includes(keepKey))) {
                     return;
                 }
@@ -34,6 +42,7 @@ export function CacheManagementCard() {
             setLastCleared(now);
             toast.success(intl.formatMessage({ id: 'settings.database.cache.toast.success' }));
         } catch (error) {
+            console.error('Clear cache failed:', error);
             toast.error(intl.formatMessage(
                 { id: 'settings.database.cache.toast.error' },
                 { error: (error as Error).message }

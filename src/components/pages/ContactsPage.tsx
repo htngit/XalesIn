@@ -284,12 +284,12 @@ function ContactsPageContent({
                               disabled={isLoading}
                             />
                           </TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
+                          <TableHead className="w-[200px] md:w-[250px]">{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
+                          <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
+                          <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
+                          <TableHead className="hidden md:table-cell">{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
+                          <TableHead className="hidden lg:table-cell w-[120px]">{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
+                          <TableHead className="w-[50px]">{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -301,8 +301,8 @@ function ContactsPageContent({
                               <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                               <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                              <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                              <TableCell className="hidden md:table-cell"><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
                               <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
                             </TableRow>
                           ))
@@ -328,41 +328,44 @@ function ContactsPageContent({
                                     aria-label={`Select ${contact.name}`}
                                   />
                                 </TableCell>
-                                <TableCell className="font-medium">{contact.name}</TableCell>
+                                <TableCell className="font-medium max-w-[200px] md:max-w-[250px] truncate" title={contact.name}>{contact.name}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center space-x-2">
-                                    <Phone className="h-4 w-4 text-muted-foreground" />
-                                    <span>{contact.phone}</span>
+                                    <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate">{contact.phone}</span>
                                   </div>
                                 </TableCell>
                                 <TableCell>
                                   {group ? (
-                                    <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                    <Badge variant="outline" className="flex items-center gap-1 w-fit max-w-[140px] truncate" title={group.name}>
                                       <div
-                                        className="w-3 h-3 rounded-full border"
+                                        className="w-3 h-3 rounded-full border flex-shrink-0"
                                         style={{ backgroundColor: group.color }}
                                       />
-                                      {group.name}
+                                      <span className="truncate">{group.name}</span>
                                     </Badge>
                                   ) : (
                                     <Badge variant="secondary">{intl.formatMessage({ id: 'contacts.badge.unknown_group', defaultMessage: 'Unknown Group' })}</Badge>
                                   )}
                                 </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-wrap gap-1">
+                                <TableCell className="hidden md:table-cell">
+                                  <div className="flex flex-wrap gap-1 max-w-[200px]">
                                     {contact.tags && contact.tags.length > 0 ? (
-                                      contact.tags.map((tag) => (
-                                        <Badge key={tag} variant="outline" className="text-xs">
-                                          <Tag className="h-3 w-3 mr-1" />
-                                          {tag}
+                                      contact.tags.slice(0, 2).map((tag) => (
+                                        <Badge key={tag} variant="outline" className="text-xs truncate max-w-[80px]" title={tag}>
+                                          <Tag className="h-3 w-3 mr-1 flex-shrink-0" />
+                                          <span className="truncate">{tag}</span>
                                         </Badge>
                                       ))
                                     ) : (
                                       <span className="text-muted-foreground text-sm">{intl.formatMessage({ id: 'contacts.badge.no_tags', defaultMessage: 'No tags' })}</span>
                                     )}
+                                    {contact.tags && contact.tags.length > 2 && (
+                                      <Badge variant="outline" className="text-xs">+{contact.tags.length - 2}</Badge>
+                                    )}
                                   </div>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="hidden lg:table-cell">
                                   <span className="text-sm text-muted-foreground">
                                     {new Date(contact.created_at).toLocaleDateString()}
                                   </span>

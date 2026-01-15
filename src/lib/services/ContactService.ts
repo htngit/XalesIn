@@ -164,7 +164,7 @@ export class ContactService {
         const transformed: ContactWithGroup = {
           ...standardized,
           name: sanitizeString(standardized.name, 'name', 255),
-          phone: sanitizeString(standardized.phone, 'phone', 20),
+          phone: sanitizeString(standardized.phone, 'phone', 50), // Increased to 50 to accommodate WhatsApp JIDs
           tags: sanitizeArray(standardized.tags, 'tags', (tag): tag is string => typeof tag === 'string'),
           notes: sanitizeString(standardized.notes, 'notes', 1000),
           is_blocked: sanitizeBoolean(standardized.is_blocked, 'is_blocked'),

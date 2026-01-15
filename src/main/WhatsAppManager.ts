@@ -244,20 +244,59 @@ export class WhatsAppManager {
 
         // Incoming messages
         this.sock.ev.on('messages.upsert', async (m: any) => {
-            if (m.type !== 'notify') return;
+            console.log(`[WhatsAppManager] messages.upsert type: ${m.type}, count: ${m.messages.length}`);
+
+            // Allow 'notify' (realtime) and 'append' (history)
+            if (m.type !== 'notify' && m.type !== 'append') return;
 
             for (const msg of m.messages) {
-                // Skip messages sent by us
-                if (msg.key.fromMe) continue;
+                // Log for debug
+                // console.log('[WhatsAppManager] Processing message:', msg.key.id);
 
                 const remoteJid = msg.key.remoteJid;
-                if (!remoteJid) continue;
+                // Only allow personal chats (one-on-one)
+                // Filter out: @g.us (groups), @broadcast, @newsletter (channels)
+                if (!remoteJid || !remoteJid.endsWith('@s.whatsapp.net')) continue;
 
-                console.log(`[WhatsAppManager] Message received from: ${remoteJid}`);
+                // Extract content
+                let body = '';
+                let type = 'unknown';
+                let hasMedia = false;
 
-                // Pass to MessageReceiverWorker
-                if (this.messageReceiverWorker) {
-                    // Convert to a simplified format that MessageReceiverWorker expects
+                if (msg.message) {
+                    type = Object.keys(msg.message)[0];
+                    // Simple content extraction strategies
+                    body = msg.message.conversation ||
+                        msg.message.extendedTextMessage?.text ||
+                        msg.message.imageMessage?.caption ||
+                        msg.message.videoMessage?.caption ||
+                        "";
+
+                    if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage' || type === 'stickerMessage') {
+                        hasMedia = true;
+                    }
+                }
+
+                // Construct clean payload for renderer
+                const payload = {
+                    id: msg.key.id,
+                    from: remoteJid,
+                    to: this.sock?.user?.id || 'me',
+                    body: body,
+                    type: type,
+                    timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : (msg.messageTimestamp as any)?.low || Math.floor(Date.now() / 1000),
+                    hasMedia: hasMedia,
+                    fromMe: msg.key.fromMe || false,
+                    pushName: msg.pushName
+                };
+
+                // Send to Renderer (Inbox/Frontend) for storage and display
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    this.mainWindow.webContents.send('whatsapp:message-received', payload);
+                }
+
+                // Pass to MessageReceiverWorker if needed (for other logic)
+                if (this.messageReceiverWorker && !msg.key.fromMe) {
                     const messageData = {
                         key: msg.key,
                         message: msg.message,

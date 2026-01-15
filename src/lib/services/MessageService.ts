@@ -305,7 +305,14 @@ export class MessageService {
         fromMe?: boolean;
         mediaUrl?: string;
         mediaMimeType?: string;
-    }): Promise<Message> {
+    }): Promise<Message | null> {
+        // Strict Filter: Only allow personal chats (@s.whatsapp.net)
+        // Groups (@g.us) and Channels/Newsletters (@newsletter) are ignored
+        if (!data.from.endsWith('@s.whatsapp.net')) {
+            // console.log('[MessageService] Ignoring non-personal message:', data.from);
+            return null;
+        }
+
         // Check for duplicate by whatsapp_message_id
         const existing = await db.messages
             .where('whatsapp_message_id')
@@ -322,7 +329,11 @@ export class MessageService {
 
         // Use 'to' as contact phone if outbound, 'from' if inbound
         const rawPhone = isOutbound ? data.to : data.from;
-        let normalizedPhone = rawPhone.replace('@c.us', '').replace(/[^\d]/g, '');
+        // Strip WhatsApp JID suffixes: @s.whatsapp.net, @c.us, etc.
+        let normalizedPhone = rawPhone
+            .replace('@s.whatsapp.net', '')
+            .replace('@c.us', '')
+            .replace(/[^\d]/g, '');
         if (normalizedPhone.startsWith('0')) {
             normalizedPhone = '62' + normalizedPhone.slice(1);
         }
@@ -439,6 +450,30 @@ export class MessageService {
                 if (lastMessage.contact_id) {
                     const contact = await db.contacts.get(lastMessage.contact_id);
                     if (contact && !contact._deleted) {
+                        contactName = contact.name;
+                        contactId = contact.id;
+                        contactTags = contact.tags;
+                        contactGroupId = contact.group_id;
+
+                        // Get group info
+                        if (contact.group_id) {
+                            const group = await db.groups.get(contact.group_id);
+                            if (group && !group._deleted) {
+                                contactGroupName = group.name;
+                                contactGroupColor = group.color;
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback: Try to find contact by phone if contact_id is missing on message
+                    const normalizedPhone = phone.replace(/[^\d]/g, '');
+                    const contact = await db.contacts
+                        .where('master_user_id')
+                        .equals(masterUserId)
+                        .and(c => !c._deleted && c.phone.replace(/[^\d]/g, '') === normalizedPhone)
+                        .first();
+
+                    if (contact) {
                         contactName = contact.name;
                         contactId = contact.id;
                         contactTags = contact.tags;

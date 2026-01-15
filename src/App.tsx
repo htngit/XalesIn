@@ -196,6 +196,30 @@ const MainApp = () => {
     restoreSession();
   }, []);
 
+  // WhatsApp Message Sync Listener (Inbox)
+  useEffect(() => {
+    // Only listen if PIN is validated
+    if (!pinData?.is_valid) return;
+
+    // Listen for incoming messages (new & history)
+    const unsubscribeMessages = window.electron?.whatsapp?.onMessageReceived?.(async (data: any) => {
+      // console.log('[App] Received message via IPC:', data.id);
+      try {
+        const messageService = serviceManager.getMessageService();
+        await messageService.createFromIncomingWhatsApp(data);
+
+        // We generally don't show toast for every message to avoid spamming during history sync
+        // UI updates automatically via subscriptions
+      } catch (err) {
+        console.error('[App] Failed to save incoming message:', err);
+      }
+    });
+
+    return () => {
+      if (unsubscribeMessages) unsubscribeMessages();
+    };
+  }, [pinData]);
+
   // WhatsApp Contact Sync Listener
   useEffect(() => {
     // Only listen if PIN is validated (meaning services are initialized)

@@ -493,6 +493,62 @@ export class SyncManager {
   }
 
   /**
+   * Clear local cache (wipe DB) and force re-sync from server
+   * Does NOT propagate deletions to server.
+   */
+  async clearCacheAndResync(): Promise<void> {
+    if (!this.isOnline) {
+      throw new Error('Cannot clear cache and resync while offline');
+    }
+
+    if (!this.masterUserId) {
+      throw new Error('Master user ID not set');
+    }
+
+    try {
+      this.setStatus(SyncStatus.SYNCING, 'Clearing local cache...');
+
+      // Stop auto sync to prevent interference
+      const wasAutoSync = this.currentConfig.autoSync;
+      this.stopAutoSync();
+
+      // Start cache clear mode (disable sync hooks)
+      db.startCacheClear();
+
+      // Wipe all local data
+      await db.clearAllData();
+
+      // End cache clear mode
+      db.endCacheClear();
+
+      // Clear sync queue specifically to be safe
+      await db.syncQueue.clear();
+
+      this.setStatus(SyncStatus.SYNCING, 'Re-fetching data from server...');
+
+      // Force full pull from server
+      await this.pullFromServerWithCache();
+
+      // Restart auto sync if it was enabled
+      if (wasAutoSync) {
+        this.startAutoSync();
+      }
+
+      this.setStatus(SyncStatus.IDLE, 'Cache cleared and synced');
+      this.emit({
+        type: 'sync_complete',
+        message: 'Cache cleared and re-synced successfully'
+      });
+
+    } catch (error) {
+      console.error('Error clearing cache and resyncing:', error);
+      db.endCacheClear(); // Ensure hooks are re-enabled
+      this.setStatus(SyncStatus.ERROR, 'Failed to clear cache');
+      throw error;
+    }
+  }
+
+  /**
    * Enhanced main sync method with performance optimizations and retry logic
    */
   async sync(): Promise<void> {
