@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, FileImage, UsersRound, Database } from 'lucide-react';
 import { db } from '@/lib/db';
+import { serviceManager } from '@/lib/services';
 import { FormattedMessage, useIntl } from 'react-intl';
 
 interface DatabaseStats {
@@ -24,11 +25,14 @@ export function DatabaseStatsCard() {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                // Get counts
-                const [contacts, groups, assets] = await Promise.all([
-                    db.contacts.count(),
-                    db.groups.count(),
-                    db.asset_blobs.count(),
+                // Use services to ensure we respect user isolation and logic consistent with Dashboard
+                const contactService = serviceManager.getContactService();
+                const groupService = serviceManager.getGroupService();
+
+                const [contacts, groups, assetsCount] = await Promise.all([
+                    contactService.getAllContacts(),
+                    groupService.getGroups(),
+                    db.asset_blobs.count(), // Keep direct DB for assets as typical service might not expose count
                 ]);
 
                 // Calculate asset size
@@ -37,19 +41,18 @@ export function DatabaseStatsCard() {
                     assetsSize += blob.size;
                 });
 
-                // Estimate database size (rough calculation)
-                // Assuming avg sizes: Contact ~2KB, Group ~3KB, plus actual asset size
+                // Estimate database size
                 // We exclude activity logs from calculation as requested to be hidden
-                const estimatedSize = (contacts * 2048) + (groups * 3072) + assetsSize; // Bytes
+                const estimatedSize = (contacts.length * 2048) + (groups.length * 3072) + assetsSize; // Bytes
 
                 const sizeStr = estimatedSize > 1024 * 1024
                     ? `${(estimatedSize / (1024 * 1024)).toFixed(2)} MB`
                     : `${(estimatedSize / 1024).toFixed(2)} KB`;
 
                 setStats({
-                    contactsCount: contacts,
-                    assetsCount: assets,
-                    groupsCount: groups,
+                    contactsCount: contacts.length,
+                    assetsCount: assetsCount,
+                    groupsCount: groups.length,
                     databaseSize: sizeStr,
                 });
             } catch (error) {

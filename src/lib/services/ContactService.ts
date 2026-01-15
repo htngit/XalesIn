@@ -146,7 +146,7 @@ export class ContactService {
             id: contact.id || crypto.randomUUID(),
             name: 'Invalid Contact',
             phone: '',
-            group_id: contact.group_id || '',
+            group_id: contact.group_id || undefined,
             master_user_id: contact.master_user_id || '',
             created_by: contact.created_by || '',
             tags: [],
@@ -729,11 +729,15 @@ export class ContactService {
         const contactName = waContact.name || existing?.name || normalizedPhone; // Prioritize WA name -> Existing name -> Phone
 
         if (existing) {
-          // Update only if name changed (or other logic). For now, we simple update to sync names.
-          if (existing.name !== contactName && waContact.name) {
+          // Update only if name changed (or other logic) OR if group_id is invalid (empty string)
+          const isNameChanged = existing.name !== contactName && waContact.name;
+          const hasInvalidGroupId = existing.group_id === '';
+
+          if (isNameChanged || hasInvalidGroupId) {
             const updated = {
               ...existing,
               name: contactName,
+              group_id: existing.group_id || undefined, // Ensure empty string becomes undefined
               // Add 'WhatsApp' tag if not present
               tags: existing.tags ? (existing.tags.includes('WhatsApp') ? existing.tags : [...existing.tags, 'WhatsApp']) : ['WhatsApp'],
               updated_at: timestamps.updated_at,

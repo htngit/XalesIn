@@ -1,8 +1,10 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge'; // Added Badge import
+import { Download, Sparkles, ArrowRight, Info } from 'lucide-react'; // Updated lucide-react imports
+import { FormattedMessage, useIntl } from 'react-intl'; // Added react-intl imports
 
 export interface AppUpdateInfo {
     version: string;
@@ -22,6 +24,7 @@ interface UpdateSplashScreenProps {
 
 export function UpdateSplashScreen({ updateInfo, currentVersion, onLater }: UpdateSplashScreenProps) {
     const { version, release_notes, is_mandatory, download_url } = updateInfo;
+    const intl = useIntl(); // Added useIntl hook
 
     const handleUpdate = () => {
         if (download_url) {
@@ -45,45 +48,44 @@ export function UpdateSplashScreen({ updateInfo, currentVersion, onLater }: Upda
                         <CardHeader className="pb-4">
                             <div className="flex items-start justify-between">
                                 <div className="space-y-1">
-                                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                                        <Download className="h-6 w-6 text-primary" />
-                                        Update Available
-                                    </CardTitle>
-                                    <CardDescription className="text-base">
-                                        A new version of Xenderin is available.
-                                    </CardDescription>
+                                    <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                                        <Sparkles className="h-5 w-5 text-yellow-500 fill-yellow-500" />
+                                        <FormattedMessage id="system.update.title" defaultMessage="Update Available" />
+                                    </h2>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        <FormattedMessage id="system.update.description" defaultMessage="A new version of Xenderin is available." />
+                                    </p>
                                 </div>
-                                {is_mandatory && (
-                                    <div className="bg-destructive/10 text-destructive px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 border border-destructive/20">
-                                        <AlertTriangle className="h-3 w-3" />
-                                        Mandatory
-                                    </div>
-                                )}
+                                {/* Mandatory badge moved to CardFooter as per instruction */}
                             </div>
                         </CardHeader>
 
                         <CardContent className="space-y-4">
                             <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg border border-border/50">
                                 <div className="flex flex-col">
-                                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Current Version</span>
+                                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                                        <FormattedMessage id="system.update.version.current" defaultMessage="Current Version" />
+                                    </span>
                                     <span className="font-mono text-sm font-medium">{currentVersion}</span>
                                 </div>
                                 <div className="h-8 w-px bg-border/50 mx-4" />
                                 <div className="flex flex-col items-end">
-                                    <span className="text-xs text-primary uppercase tracking-wider font-semibold">New Version</span>
+                                    <span className="text-xs text-primary uppercase tracking-wider font-semibold">
+                                        <FormattedMessage id="system.update.version.new" defaultMessage="New Version" />
+                                    </span>
                                     <span className="font-mono text-lg font-bold text-primary">{version}</span>
                                 </div>
                             </div>
 
                             <div className="space-y-2">
-                                <h4 className="text-sm font-semibold flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                    What's New
-                                </h4>
+                                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
+                                    <ArrowRight className="h-4 w-4 text-primary" />
+                                    <FormattedMessage id="system.update.whats_new" defaultMessage="What's New" />
+                                </h3>
                                 <ScrollArea className="h-[200px] w-full rounded-md border bg-muted/30 p-4">
                                     <div className="prose prose-sm dark:prose-invert max-w-none">
                                         <pre className="whitespace-pre-wrap font-sans text-sm text-muted-foreground leading-relaxed">
-                                            {release_notes || "No release notes available."}
+                                            {release_notes || intl.formatMessage({ id: "system.update.no_notes", defaultMessage: "No release notes available." })}
                                         </pre>
                                     </div>
                                 </ScrollArea>
@@ -97,12 +99,18 @@ export function UpdateSplashScreen({ updateInfo, currentVersion, onLater }: Upda
                                 size="lg"
                             >
                                 <Download className="mr-2 h-4 w-4" />
-                                Update Now
+                                <FormattedMessage id="system.update.button.now" defaultMessage="Update Now" />
                             </Button>
                             {!is_mandatory && (
                                 <Button variant="ghost" onClick={onLater} className="w-full text-muted-foreground">
-                                    Maybe Later
+                                    <FormattedMessage id="system.update.button.later" defaultMessage="Maybe Later" />
                                 </Button>
+                            )}
+                            {is_mandatory && (
+                                <Badge variant="destructive" className="ml-auto flex items-center gap-1 px-2 py-0.5 animate-pulse">
+                                    <Info className="h-3 w-3" />
+                                    <FormattedMessage id="system.update.mandatory" defaultMessage="Mandatory" />
+                                </Badge>
                             )}
                         </CardFooter>
                     </Card>

@@ -159,6 +159,28 @@ export const setupIPC = (
     });
 
     /**
+     * Resync Contacts
+     */
+    ipcMain.handle('whatsapp:resync-contacts', async () => {
+        try {
+            console.log('[IPC] whatsapp:resync-contacts called');
+
+            if (!whatsappManager) {
+                throw new Error('WhatsAppManager not initialized');
+            }
+
+            const success = await whatsappManager.resyncContacts();
+            return { success };
+        } catch (error) {
+            console.error('[IPC] whatsapp:resync-contacts error:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    /**
      * Process bulk message job
      */
     ipcMain.handle('whatsapp:process-job', async (_, { jobId, contacts, template, assets, delayConfig }) => {

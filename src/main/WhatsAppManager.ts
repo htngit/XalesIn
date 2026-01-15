@@ -278,15 +278,19 @@ export class WhatsAppManager {
                 }
 
                 // Construct clean payload for renderer
+                // Construct clean payload for renderer
+                const myJid = this.sock?.user?.id || 'me';
+                const isOutbound = msg.key.fromMe || false;
+
                 const payload = {
                     id: msg.key.id,
-                    from: remoteJid,
-                    to: this.sock?.user?.id || 'me',
+                    from: isOutbound ? myJid : remoteJid,
+                    to: isOutbound ? remoteJid : myJid,
                     body: body,
                     type: type,
                     timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : (msg.messageTimestamp as any)?.low || Math.floor(Date.now() / 1000),
                     hasMedia: hasMedia,
-                    fromMe: msg.key.fromMe || false,
+                    fromMe: isOutbound,
                     pushName: msg.pushName
                 };
 
@@ -614,6 +618,40 @@ export class WhatsAppManager {
         } catch (error) {
             console.error('[WhatsAppManager] Error getting client info:', error);
             return null;
+        }
+    }
+
+    /**
+     * Force resync contacts by soft reconnecting
+     */
+    /**
+     * Force resync contacts by soft reconnecting
+     */
+    async resyncContacts(): Promise<boolean> {
+        console.log('[WhatsAppManager] Forcing contact resync via soft reconnect...');
+        this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'start', message: 'Initiating re-sync...' });
+
+        try {
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'disconnecting', message: 'Refreshing connection...' });
+            await this.disconnect(false);
+
+            // Small delay to ensure clean state
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'connecting', message: 'Reconnecting to WhatsApp...' });
+            await this.connect(true);
+
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'waiting', message: 'Waiting for contact data...' });
+
+            // Give it a moment to receive data
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'complete', message: 'Sync Completed' });
+
+            return true;
+        } catch (error) {
+            console.error('[WhatsAppManager] Resync failed:', error);
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'error', message: 'Re-sync failed' });
+            return false;
         }
     }
 }

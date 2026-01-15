@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LoginPage } from '@/components/pages/LoginPage';
 // RegisterPage, ForgotPasswordPage, ResetPasswordPage are handled within LoginPage
@@ -25,6 +25,7 @@ import { syncManager } from '@/lib/sync/SyncManager';
 
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
+import { toast as sonnerToast } from 'sonner';
 import { useToast } from '@/hooks/use-toast';
 import { UserProvider } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
@@ -166,6 +167,7 @@ const MainApp = () => {
   const [pinData, setPinData] = useState<PINValidation | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const syncToastIdRef = useRef<string | number | undefined>(undefined);
 
   // Restore session on load
   useEffect(() => {
@@ -227,6 +229,21 @@ const MainApp = () => {
 
     const unsubscribeContacts = window.electron?.whatsapp?.onContactsReceived?.(async (contacts: any[]) => {
       console.log('[App] Received contacts from WhatsApp sync:', contacts.length);
+
+      // Check Auto-Sync Setting
+      const autoSync = localStorage.getItem('autoSyncContacts');
+      if (autoSync === 'false') {
+        console.log('[App] Skipping WhatsApp contact sync (disabled in settings)');
+        return;
+      }
+
+      // Notify User Sync Started
+      toast({
+        title: "Syncing Contacts...",
+        description: `Processing ${contacts.length} contacts from WhatsApp...`,
+        duration: 3000
+      });
+
       try {
         const contactService = serviceManager.getContactService();
         // We need to map interface
@@ -253,6 +270,72 @@ const MainApp = () => {
 
     return () => {
       if (unsubscribeContacts) unsubscribeContacts();
+    };
+
+  }, [pinData]);
+
+  // WhatsApp Sync Status Listener (Persistent Feedback)
+  useEffect(() => {
+    // Debug log to confirm listener setup
+    console.log('[App] Setting up WhatsApp Sync Status listener...');
+
+    if (!pinData?.is_valid) {
+      console.log('[App] PIN not valid yet, skipping sync listener.');
+      return;
+    }
+
+    const unsubscribeSyncStatus = window.electron?.whatsapp?.onSyncStatus?.((status: { step: string, message: string }) => {
+      console.log('[App] 🔄 SYNC EVENT RECEIVED:', status.step, status.message);
+
+      if (status.step === 'start') {
+        // Start persistent toast
+        syncToastIdRef.current = sonnerToast.loading(status.message, {
+          duration: Infinity,
+          description: "Please wait while we sync your contacts..."
+        });
+      }
+      else if (status.step === 'complete') {
+        // Update to success and clear ref
+        if (syncToastIdRef.current !== undefined) {
+          sonnerToast.success(status.message, {
+            id: syncToastIdRef.current,
+            duration: 4000,
+            description: "Your contacts are now up to date."
+          });
+          syncToastIdRef.current = undefined;
+        } else {
+          sonnerToast.success(status.message, { duration: 4000 });
+        }
+      }
+      else if (status.step === 'error') {
+        // Update to error and clear ref
+        if (syncToastIdRef.current !== undefined) {
+          sonnerToast.error(status.message, {
+            id: syncToastIdRef.current,
+            duration: 5000,
+            description: "Please check your connection."
+          });
+          syncToastIdRef.current = undefined;
+        } else {
+          sonnerToast.error(status.message);
+        }
+      }
+      else {
+        // Update loading state (disconnecting, connecting, waiting)
+        if (syncToastIdRef.current !== undefined) {
+          sonnerToast.loading(status.message, {
+            id: syncToastIdRef.current,
+            duration: Infinity
+          });
+        } else {
+          // Fallback if joined mid-stream
+          syncToastIdRef.current = sonnerToast.loading(status.message, { duration: Infinity });
+        }
+      }
+    });
+
+    return () => {
+      if (unsubscribeSyncStatus) unsubscribeSyncStatus();
     };
   }, [pinData]);
 
@@ -433,6 +516,12 @@ const MainApp = () => {
     // ... (existing logout logic)
     const authService = new AuthService();
     try {
+      // Disconnect WhatsApp session
+      if (window.electron?.whatsapp?.disconnect) {
+        console.log('[App] Disconnecting WhatsApp session...');
+        await window.electron.whatsapp.disconnect();
+      }
+
       await authService.logout();
     } catch (error) {
       console.error('Logout error:', error);

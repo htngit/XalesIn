@@ -1,157 +1,166 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Contact, ContactGroup, ContactService } from '@/lib/services';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { X } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { Contact, ContactGroup } from '@/lib/services/types';
+import { ContactService } from '@/lib/services/ContactService';
+import { Loader2, Plus, X } from 'lucide-react';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 interface ContactModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (contact: Contact | null) => void;
-  mode: 'add' | 'edit';
   contact?: Contact | null;
   groups: ContactGroup[];
   contactService: ContactService;
   onNotification: (notification: { message: string; type: 'success' | 'error' }) => void;
+  mode?: 'add' | 'edit';
 }
 
 export function ContactModal({
   isOpen,
   onClose,
   onSave,
-  mode,
   contact,
   groups,
   contactService,
-  onNotification
+  onNotification,
+  mode: _mode
 }: ContactModalProps) {
+  const intl = useIntl();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    group_id: '',
-    tags: [] as string[]
-  });
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [groupId, setGroupId] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
-  // Memoize groups dependency to prevent infinite loops
   const memoizedGroups = useMemo(() => groups, [groups.length]);
 
-  // Reset form data when modal opens/closes or mode changes
   useEffect(() => {
     if (isOpen) {
-      if (mode === 'edit' && contact) {
-        setFormData({
-          name: contact.name,
-          phone: contact.phone,
-          group_id: contact.group_id || '',
-          tags: contact.tags || []
-        });
+      if (contact) {
+        setName(contact.name);
+        setPhone(contact.phone);
+        setGroupId(contact.group_id || '');
+        setTags(contact.tags || []);
       } else {
-        setFormData({
-          name: '',
-          phone: '',
-          group_id: memoizedGroups.length > 0 ? memoizedGroups[0].id : '',
-          tags: []
-        });
+        setName('');
+        setPhone('');
+        setGroupId(memoizedGroups.length > 0 ? memoizedGroups[0].id : '');
+        setTags([]);
       }
       setNewTag('');
     }
-  }, [isOpen, mode, contact, memoizedGroups]);
+  }, [isOpen, contact, memoizedGroups]);
 
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const addTag = () => {
-    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...prev.tags, newTag.trim()]
-      }));
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim())) {
+      setTags(prev => [...prev, newTag.trim()]);
       setNewTag('');
     }
   };
 
-  const removeTag = (tagToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.filter(tag => tag !== tagToRemove)
-    }));
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && newTag.trim()) {
-      e.preventDefault();
-      addTag();
-    }
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(prev => prev.filter(tag => tag !== tagToRemove));
   };
 
   const validateForm = () => {
-    if (!formData.name.trim()) {
-      onNotification({ message: 'Name is required', type: 'error' });
+    if (!name.trim()) {
+      toast({
+        title: intl.formatMessage({ id: 'common.validation_error' }),
+        description: intl.formatMessage({ id: 'contacts.modal.error.name_required' }),
+        variant: "destructive",
+      });
       return false;
     }
-    if (!formData.phone.trim()) {
-      onNotification({ message: 'Phone number is required', type: 'error' });
+    if (!phone.trim()) {
+      toast({
+        title: intl.formatMessage({ id: 'common.validation_error' }),
+        description: intl.formatMessage({ id: 'contacts.modal.error.phone_required' }),
+        variant: "destructive",
+      });
       return false;
     }
-    if (!formData.group_id) {
-      onNotification({ message: 'Please select a group', type: 'error' });
+    if (!groupId) {
+      toast({
+        title: intl.formatMessage({ id: 'common.validation_error' }),
+        description: intl.formatMessage({ id: 'contacts.modal.error.group_required' }),
+        variant: "destructive",
+      });
       return false;
     }
 
-    // Basic phone number validation (Indonesia format)
     const phoneRegex = /^(\+62|62|0)[0-9]{9,13}$/;
-    if (!phoneRegex.test(formData.phone.replace(/\s+/g, ''))) {
-      onNotification({ message: 'Please enter a valid Indonesian phone number', type: 'error' });
+    if (!phoneRegex.test(phone.replace(/\s+/g, ''))) {
+      toast({
+        title: intl.formatMessage({ id: 'common.validation_error' }),
+        description: intl.formatMessage({ id: 'contacts.modal.error.phone_invalid' }),
+        variant: "destructive",
+      });
       return false;
     }
 
     return true;
   };
 
-  const handleSave = async () => {
+  const handleSaveContact = async () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
     try {
       let savedContact: Contact | null = null;
+      const contactData = {
+        name: name.trim(),
+        phone: phone.trim(),
+        group_id: groupId,
+        tags: tags,
+      };
 
-      if (mode === 'add') {
-        const newContact = await contactService.createContact({
-          name: formData.name.trim(),
-          phone: formData.phone.trim(),
-          group_id: formData.group_id,
-          tags: formData.tags,
-          is_blocked: false
-        });
-        savedContact = newContact;
-        onNotification({
-          message: `${newContact.name} has been added successfully.`,
-          type: 'success'
-        });
-      } else if (mode === 'edit' && contact) {
-        const updatedContact = await contactService.updateContact(contact.id, {
-          name: formData.name.trim(),
-          phone: formData.phone.trim(),
-          group_id: formData.group_id,
-          tags: formData.tags
-        });
+      if (contact) {
+        const updatedContact = await contactService.updateContact(contact.id, contactData);
         savedContact = updatedContact;
         if (updatedContact) {
+          toast({
+            title: intl.formatMessage({ id: 'common.success' }),
+            description: intl.formatMessage({ id: 'contacts.modal.save_success_edit' }, { name }),
+          });
           onNotification({
-            message: `${updatedContact.name} has been updated successfully.`,
+            message: intl.formatMessage({ id: 'contacts.modal.save_success_edit' }, { name }),
             type: 'success'
           });
         }
+      } else {
+        const newContact = await contactService.createContact({
+          ...contactData,
+          is_blocked: false
+        });
+        savedContact = newContact;
+        toast({
+          title: intl.formatMessage({ id: 'common.success' }),
+          description: intl.formatMessage({ id: 'contacts.modal.save_success_add' }, { name }),
+        });
+        onNotification({
+          message: intl.formatMessage({ id: 'contacts.modal.save_success_add' }, { name }),
+          type: 'success'
+        });
       }
 
       if (savedContact) {
@@ -160,8 +169,17 @@ export function ContactModal({
       }
     } catch (error) {
       console.error('Error saving contact:', error);
+      const mode = contact
+        ? intl.formatMessage({ id: 'contacts.modal.updating' }).toLowerCase()
+        : intl.formatMessage({ id: 'contacts.modal.adding' }).toLowerCase();
+
+      toast({
+        title: intl.formatMessage({ id: 'common.error' }),
+        description: intl.formatMessage({ id: 'contacts.modal.save_error' }, { mode }),
+        variant: "destructive",
+      });
       onNotification({
-        message: `Failed to ${mode} contact. Please try again.`,
+        message: intl.formatMessage({ id: 'contacts.modal.save_error' }, { mode }),
         type: 'error'
       });
     } finally {
@@ -180,98 +198,107 @@ export function ContactModal({
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>
-            {mode === 'add' ? 'Add New Contact' : 'Edit Contact'}
+            {contact ? (
+              <FormattedMessage id="contacts.modal.edit_title" defaultMessage="Edit Contact" />
+            ) : (
+              <FormattedMessage id="contacts.modal.add_title" defaultMessage="Add New Contact" />
+            )}
           </DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
-          {/* Name Field */}
           <div className="grid gap-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">
+              <FormattedMessage id="contacts.modal.name_label" defaultMessage="Name *" />
+            </Label>
             <Input
               id="name"
-              placeholder="Enter contact name"
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
+              placeholder={intl.formatMessage({ id: 'contacts.modal.name_placeholder', defaultMessage: 'Enter contact name' })}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               disabled={isLoading}
             />
           </div>
 
-          {/* Phone Field */}
           <div className="grid gap-2">
-            <Label htmlFor="phone">Phone Number *</Label>
+            <Label htmlFor="phone">
+              <FormattedMessage id="contacts.modal.phone_label" defaultMessage="Phone Number *" />
+            </Label>
             <Input
               id="phone"
-              placeholder="e.g. +62812345678"
-              value={formData.phone}
-              onChange={(e) => handleInputChange('phone', e.target.value)}
+              placeholder={intl.formatMessage({ id: 'contacts.modal.phone_placeholder', defaultMessage: 'e.g. +62812345678' })}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               disabled={isLoading}
             />
           </div>
 
-          {/* Group Field */}
           <div className="grid gap-2">
-            <Label htmlFor="group">Group *</Label>
+            <Label htmlFor="group">
+              <FormattedMessage id="contacts.modal.group_label" defaultMessage="Group *" />
+            </Label>
             <Select
-              value={formData.group_id}
-              onValueChange={(value) => handleInputChange('group_id', value)}
+              value={groupId}
+              onValueChange={setGroupId}
               disabled={isLoading || memoizedGroups.length === 0}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a group" />
+                <SelectValue placeholder={intl.formatMessage({ id: 'contacts.modal.group_placeholder', defaultMessage: 'Select a group' })} />
               </SelectTrigger>
               <SelectContent>
                 {memoizedGroups.map((group) => (
                   <SelectItem key={group.id} value={group.id}>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full border"
-                        style={{ backgroundColor: group.color }}
-                      />
-                      {group.name}
-                    </div>
+                    {group.name}
                   </SelectItem>
                 ))}
+                {memoizedGroups.length === 0 && (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    <FormattedMessage id="contacts.modal.no_groups" defaultMessage="No groups available. Please create a group first." />
+                  </div>
+                )}
               </SelectContent>
             </Select>
-            {memoizedGroups.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No groups available. Please create a group first.
-              </p>
-            )}
           </div>
 
-          {/* Tags Field */}
           <div className="grid gap-2">
-            <Label htmlFor="tags">Tags</Label>
+            <Label>
+              <FormattedMessage id="contacts.modal.tags_label" defaultMessage="Tags" />
+            </Label>
             <div className="flex gap-2">
               <Input
-                id="tags"
-                placeholder="Add tag"
+                placeholder={intl.formatMessage({ id: 'contacts.modal.tags_placeholder', defaultMessage: 'Add tag' })}
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
                 disabled={isLoading}
               />
               <Button
                 type="button"
                 variant="outline"
-                onClick={addTag}
+                size="icon"
+                onClick={handleAddTag}
                 disabled={isLoading || !newTag.trim()}
               >
-                Add
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
-            {formData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {formData.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary text-secondary-foreground text-xs"
+                  >
                     {tag}
-                    <X
-                      className="h-3 w-3 cursor-pointer hover:text-destructive"
-                      onClick={() => !isLoading && removeTag(tag)}
-                    />
-                  </Badge>
+                    <button
+                      type="button"
+                      onClick={() => !isLoading && handleRemoveTag(tag)}
+                      className="hover:text-destructive"
+                      disabled={isLoading}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
                 ))}
               </div>
             )}
@@ -279,21 +306,16 @@ export function ContactModal({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            disabled={isLoading}
-          >
-            Cancel
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            <FormattedMessage id="common.button.cancel" defaultMessage="Cancel" />
           </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoading || memoizedGroups.length === 0}
-          >
-            {isLoading
-              ? (mode === 'add' ? 'Adding...' : 'Updating...')
-              : (mode === 'add' ? 'Add Contact' : 'Update Contact')
-            }
+          <Button onClick={handleSaveContact} disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {contact ? (
+              <FormattedMessage id="contacts.modal.update_button" defaultMessage="Update Contact" />
+            ) : (
+              <FormattedMessage id="contacts.modal.add_button" defaultMessage="Add Contact" />
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
