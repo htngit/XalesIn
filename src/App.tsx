@@ -27,7 +27,6 @@ import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 import { toast as sonnerToast } from 'sonner';
 import { Loader2, Minus, Square } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import { UserProvider } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
