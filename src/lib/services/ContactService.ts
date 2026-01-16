@@ -59,11 +59,15 @@ export class ContactService {
 
     // Start auto sync
     this.syncManager.startAutoSync();
-
-    // Note: We DO NOT trigger sync here anymore.
-    // Initial sync is handled by InitialSyncOrchestrator to allow for background processing and UI feedback.
-    // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
   }
+
+  /**
+   * Check if initial sync is in progress
+   */
+  isSyncInProgress(): boolean {
+    return this.syncManager.isInitialSyncInProgress();
+  }
+
 
 
 
@@ -235,32 +239,37 @@ export class ContactService {
         const enrichedContacts = await this.enrichContactsWithGroups(localContacts);
 
         // If online, trigger background sync to update local data
-        if (isOnline) {
-          this.backgroundSyncContacts().catch(console.warn);
-        }
+        // REMOVED to prevent redundant sync trigger. We rely on AutoSync.
+        // if (isOnline) {
+        //   this.backgroundSyncContacts().catch(console.warn);
+        // }
 
         return enrichedContacts;
       }
 
       // No local data available
       if (isOnline) {
+        // NOTE: We do NOT trigger full sync here anymore to prevent intrusive UI toast.
+        // We fallback to direct server fetch (read-only) and let autoSync handle the local DB population in background.
+        /*
         try {
           // Try to sync from server
           await this.syncManager.triggerSync();
-
+      
           // Try local again after sync
           localContacts = await db.contacts
             .where('master_user_id')
             .equals(masterUserId)
             .and(contact => !contact._deleted)
             .toArray();
-
+      
           if (localContacts.length > 0) {
             return await this.enrichContactsWithGroups(localContacts);
           }
         } catch (syncError) {
           console.warn('Sync failed, trying direct server fetch:', syncError);
         }
+        */
 
         // Fallback to direct server fetch
         return await this.fetchContactsFromServer();
@@ -420,6 +429,23 @@ export class ContactService {
   async getAllContacts(): Promise<Contact[]> {
     const contacts = await this.getContacts();
     return contacts;
+  }
+
+  /**
+   * Get the count of contacts for the current user
+   */
+  async getContactCount(): Promise<number> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      return await db.contacts
+        .where('master_user_id')
+        .equals(masterUserId)
+        .and(contact => !contact._deleted)
+        .count();
+    } catch (error) {
+      console.warn('Error counting contacts:', error);
+      return 0;
+    }
   }
 
   /**

@@ -488,6 +488,30 @@ export function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
 
+  // Sync Status State
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Check sync status and listen for completion
+  useEffect(() => {
+    const checkStatus = () => {
+      if (contactService.isSyncInProgress()) {
+        setIsSyncingContacts(true);
+      } else if (isSyncingContacts) {
+        // If it WAS syncing, and now it's not, it finished
+        setIsSyncingContacts(false);
+        setRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Initial check
+    checkStatus();
+
+    // Poll periodically to check status
+    const interval = setInterval(checkStatus, 1000);
+    return () => clearInterval(interval);
+  }, [isSyncingContacts, contactService]);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -659,7 +683,8 @@ export function ContactsPage() {
     if (isInitialized) {
       loadData();
     }
-  }, [isInitialized, contactService, groupService]);
+  }, [isInitialized, refreshTrigger]);
+
 
   // Filter contacts effect - synchronous filtering logic
   useEffect(() => {
@@ -727,6 +752,14 @@ export function ContactsPage() {
 
   return (
     <>
+
+
+
+
+
+
+
+
       <ContactsPageContent
         contacts={contacts}
         filteredContacts={filteredContacts}
@@ -747,7 +780,7 @@ export function ContactsPage() {
         isBulkDeleting={isBulkDeleting}
         getGroupById={getGroupById}
         stats={stats}
-        isLoading={isLoading}
+        isLoading={isLoading || isSyncingContacts}
         onUploadClick={() => setShowUploadDialog(true)}
         onRefresh={() => loadData(true)}
         paginationComponent={

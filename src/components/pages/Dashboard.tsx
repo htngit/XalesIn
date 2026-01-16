@@ -178,6 +178,20 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       // Initialise all services
       await serviceManager.initializeAllServices(currentMasterUserId);
 
+      // Startup Optimization: Check if we have local data. 
+      // If yes, we skip the intrusive Initial Sync and go straight to Dashboard.
+      // Background sync will handle updates silently.
+      const contactCount = await serviceManager.getContactService().getContactCount();
+      if (contactCount > 0) {
+        console.log(`Local data found (${contactCount} contacts). Skipping Initial Sync.`);
+        setAppState('ready');
+        setIsSyncingData(false); // <--- Fix: Stop loading skeleton
+        await initializeUserData();
+        setupPaymentSubscription();
+        serviceManager.markDashboardInitialized();
+        return;
+      }
+
       // Check first‑time user
       const firstTimeService = new FirstTimeUserService();
       const isFirstTime = await firstTimeService.checkIfFirstTimeUser(currentMasterUserId);
@@ -311,7 +325,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   };
 
   const handleMenuClick = (path: string) => {
-    navigate(`/ ${path}`);
+    navigate(`/${path}`);
     setSidebarOpen(false);
   };
 

@@ -65,7 +65,15 @@ export class InitialSyncOrchestrator {
           console.log(`InitialSync: Pulling table '${tableName}'...`);
           // Execute Serial Pull using the singleton SyncManager
           if (tableName === 'contacts') {
-            await syncManager.pullTableFromServer(tableName, { backgroundProcessing: true });
+            // Check if we can use Fast Import (Server Wins / Blind Insert)
+            const contactCount = await this.serviceManager.getContactService().getContactCount();
+            const isFreshInstall = contactCount === 0;
+            console.log(`InitialSync: Pulling contacts (FastMode: ${isFreshInstall})...`);
+
+            await syncManager.pullTableFromServer(tableName, {
+              backgroundProcessing: true,
+              fastImport: isFreshInstall
+            });
           } else {
             await syncManager.pullTableFromServer(tableName);
           }
