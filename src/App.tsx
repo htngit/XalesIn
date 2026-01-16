@@ -174,7 +174,6 @@ import { UpdateSplashScreen, AppUpdateInfo } from '@/components/pages/UpdateSpla
 
 // Main App Logic
 const MainApp = () => {
-  const { toast } = useToast();
   const [authData, setAuthData] = useState<AuthResponse | null>(null);
   const [pinData, setPinData] = useState<PINValidation | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
