@@ -19,10 +19,10 @@ export const SyncProgressToast: React.FC = () => {
         const syncManager = serviceManager.getSyncManager();
         const handleProgress = (data: any) => {
             // Only show for contacts (the heavy table)
-            if (data.table === 'contacts' && data.phase === 'processing') {
+            if (data.table === 'contacts' && (data.phase === 'processing' || data.phase === 'fetching')) {
                 setProgress({
-                    current: data.current,
-                    total: data.total,
+                    current: data.current !== undefined ? data.current : 0,
+                    total: data.total || 0,
                     table: data.table,
                     status: 'processing'
                 });

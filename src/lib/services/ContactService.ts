@@ -338,33 +338,33 @@ export class ContactService {
 
   /**
    * Fetch contacts directly from server
+   * Uses RPC to bypass the 1000 row limit of standard Supabase queries
    */
   private async fetchContactsFromServer(): Promise<ContactWithGroup[]> {
     await this.getCurrentUser(); // Ensure user is authenticated
     const masterUserId = await this.getMasterUserId();
 
-    const { data, error } = await supabase
-      .from('contacts')
-      .select(`
-        *,
-        groups (
-          id,
-          name,
-          color
-        )
-      `)
-      .eq('master_user_id', masterUserId)
-      .eq('is_blocked', false)
-      .order('name');
+    // Use RPC to fetch ALL contacts (bypass 1000 row limit)
+    const { data, error } = await supabase.rpc('sync_pull_contacts', {
+      p_master_user_id: masterUserId,
+      p_last_sync: '1970-01-01' // Fetch all contacts
+    });
 
-    if (error) throw error;
+    if (error) {
+      console.error('RPC sync_pull_contacts failed:', error);
+      throw error;
+    }
+
+    const contacts = (data || []) as LocalContact[];
+    console.log(`Fetched ${contacts.length} contacts from server via RPC`);
 
     // Transform server data to match interface with standardized timestamps
-    return (data || []).map(contact => {
+    return contacts.map(contact => {
       const standardized = standardizeForService(contact, 'contact');
       return {
         ...standardized,
-        groups: contact.groups
+        // Note: RPC doesn't include group data, we'll enrich later if needed
+        groups: null
       };
     }) as ContactWithGroup[];
   }

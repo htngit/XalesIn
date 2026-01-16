@@ -72,10 +72,11 @@ export class InitialSyncOrchestrator {
 
             await syncManager.pullTableFromServer(tableName, {
               backgroundProcessing: true,
-              fastImport: isFreshInstall
+              fastImport: isFreshInstall,
+              force: true // Force execution even if stuck 'in progress'
             });
           } else {
-            await syncManager.pullTableFromServer(tableName);
+            await syncManager.pullTableFromServer(tableName, { force: true });
           }
 
           onProgress?.({

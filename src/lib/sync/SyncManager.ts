@@ -1165,9 +1165,10 @@ export class SyncManager {
    * Pull updates for a specific table from server
    * @param options Configuration options
    */
-  public async pullTableFromServer(tableName: string, options?: { backgroundProcessing?: boolean; fastImport?: boolean }): Promise<void> {
+  public async pullTableFromServer(tableName: string, options?: { backgroundProcessing?: boolean; fastImport?: boolean; force?: boolean }): Promise<void> {
     // Check if sync already in progress for this table
-    if (this._tableSyncInProgress.get(tableName)) {
+    // Check if sync in progress (unless forced)
+    if (!options?.force && this._tableSyncInProgress.get(tableName)) {
       console.log(`SyncManager: Sync already in progress for ${tableName}, skipping`);
       return;
     }
@@ -1258,15 +1259,25 @@ export class SyncManager {
         p_last_sync: lastSync
       });
 
+      if (result.error) {
+        console.error('SyncManager: RPC sync_pull_contacts failed:', result.error);
+        throw result.error;
+      }
+
       if (result.data) {
         // If RPC returns JSON, it might be nested or direct array depending on implementation
         // Our migration returns JSON directly.
         serverRecords = result.data as any[];
+        // Return immediately to avoid falling through to standard query
+        return serverRecords;
+      } else {
+        // If data is null/empty but no error, return empty array
+        return [];
       }
-      error = result.error;
-      console.log('SyncManager: RPC returned', serverRecords?.length, 'contacts');
+    }
 
-    } else {
+    // Standard Query (else removed implicitly by returning above)
+    {
       // Standard Query
       const result = await supabase
         .from(supabaseTable)
@@ -1310,6 +1321,16 @@ export class SyncManager {
     // Fast Import Strategy (Bulk Insert)
     if (options?.fastImport) {
       console.log(`SyncManager: Fast Import Mode enabled for ${tableName}`);
+
+      // Emit START progress for UI feedback (0%)
+      this.emit({
+        type: 'sync_progress',
+        table: tableName,
+        current: 0,
+        total: total,
+        phase: 'processing'
+      } as any);
+
       // Prepare all records for bulk insertion
       const bulkRecords = serverRecords.map(record => ({
         ...this.normalizeServerRecordTimestamps(record),
@@ -1324,14 +1345,17 @@ export class SyncManager {
       addedCount = serverRecords.length;
       this.syncMetrics.successfulOperations += serverRecords.length;
 
-      console.log(`SyncManager: Fast Import finished. Added ${addedCount} records.`);
+      // Emit FINAL progress for UI feedback (100%)
+      // This is crucial for the toast to show "Completed" tick and hide smoothly
+      this.emit({
+        type: 'sync_progress',
+        table: tableName,
+        current: total,
+        total: total,
+        phase: 'processing'
+      } as any);
 
-      // Skip individual processing loop
-      // We still need to emit progress/complete events conceptually, but let's just emit final here for simplicity of the flow?
-      // Actually, the original code emits 'sync_complete' at end of function. 
-      // We should just return here? 
-      // No, we need to ensure the end-of-function cleanup runs if we return early.
-      // OR we can wrap the loop in an else block.
+      console.log(`SyncManager: Fast Import finished. Added ${addedCount} records.`);
     } else {
       // Normal Processing Loop
       for (let i = 0; i < total; i += CHUNK_SIZE) {
