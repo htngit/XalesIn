@@ -335,18 +335,52 @@ export class WhatsAppManager {
                 if (!remoteJid || !remoteJid.endsWith('@s.whatsapp.net')) continue;
 
                 // Extract content
+                // Extract content with better unwrap logic for Ephemeral/ViewOnce
                 let body = '';
                 let type = 'unknown';
                 let hasMedia = false;
 
                 if (msg.message) {
-                    type = Object.keys(msg.message)[0];
-                    // Simple content extraction strategies
-                    body = msg.message.conversation ||
-                        msg.message.extendedTextMessage?.text ||
-                        msg.message.imageMessage?.caption ||
-                        msg.message.videoMessage?.caption ||
+                    let m = msg.message;
+
+                    // Unwrap nested ephemeral/viewOnce messages
+                    if (m?.viewOnceMessage?.message) {
+                        m = m.viewOnceMessage.message;
+                    }
+                    if (m?.viewOnceMessageV2?.message) {
+                        m = m.viewOnceMessageV2.message;
+                    }
+                    if (m?.ephemeralMessage?.message) {
+                        m = m.ephemeralMessage.message;
+                    }
+                    if (m?.documentWithCaptionMessage?.message) {
+                        m = m.documentWithCaptionMessage.message;
+                    }
+
+                    // Determine type after unwrap
+                    type = Object.keys(m)[0];
+
+                    // Extract text content
+                    body = m?.conversation ||
+                        m?.extendedTextMessage?.text ||
+                        m?.imageMessage?.caption ||
+                        m?.videoMessage?.caption ||
+                        m?.documentMessage?.caption ||
                         "";
+
+                    // Fallback: If body is empty but type is text-like, try to find text
+                    if (!body && type === 'protocolMessage') {
+                        // Protocol messages (history sync, etc) usually have no body to display
+                        // We must skip them to avail empty bubbles
+                        // console.log('[WhatsAppManager] Skipping protocol/system message', msg.key.id);
+                        continue;
+                    }
+
+                    if (!body && !hasMedia) {
+                        // Double check: if still no body and no media, skip it.
+                        // This filters out reaction messages, keep alive, etc.
+                        continue;
+                    }
 
                     if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage' || type === 'stickerMessage') {
                         hasMedia = true;
@@ -737,6 +771,12 @@ export class WhatsAppManager {
      * This is a "Soft Reconnect"
      */
     async fetchHistory(): Promise<boolean> {
+        // Prevent concurrent calls (React StrictMode double-invocation protection)
+        if (this.isHistorySyncActive) {
+            console.log('[WhatsAppManager] fetchHistory already in progress. Skipping.');
+            return false;
+        }
+
         console.log('[WhatsAppManager] Fetching history via soft reconnect...');
         this.isHistorySyncActive = true;
         this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'start', message: 'Initializing history fetch...' });

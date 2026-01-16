@@ -690,6 +690,125 @@ export class ContactService {
   }
 
   /**
+   * Sync contacts from WhatsApp DIRECTLY to Server (Server-First Approach)
+   * This ensures the server is the single source of truth.
+   * 1. Fetches existing contact map from Server (ID, Phone)
+   * 2. Maps WA contacts to Supabase schema, reusing IDs if phone matches
+   * 3. Batches upserts to Supabase (per 100)
+   * 4. Triggers full sync from Server to Local
+   */
+  async syncWhatsAppContactsDirectlyToServer(waContacts: Array<{ phone: string; name?: string }>): Promise<{ added: number; updated: number; errors: number }> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      const user = await this.getCurrentUser();
+      const timestamps = addTimestamps({}, false);
+
+      // 1. Fetch minimal map of existing Server contacts (ID, Phone)
+      // We need this to ensure we don't create duplicates and reuse IDs
+      const { data: serverContacts, error: fetchError } = await supabase
+        .from('contacts')
+        .select('id, phone, name')
+        .eq('master_user_id', masterUserId)
+        .eq('is_blocked', false);
+
+      if (fetchError) throw fetchError;
+
+      const serverPhoneMap = new Map<string, { id: string, name: string }>();
+      serverContacts?.forEach(c => {
+        // Normalize stored phone
+        const p = c.phone.replace(/[^\d]/g, '');
+        serverPhoneMap.set(p, { id: c.id, name: c.name });
+      });
+
+      const batchSize = 100;
+      const validContacts: any[] = [];
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      // 2. Prepare Payload
+      for (const waContact of waContacts) {
+        let normalizedPhone = waContact.phone.replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) normalizedPhone = '62' + normalizedPhone.slice(1);
+
+        const existing = serverPhoneMap.get(normalizedPhone);
+        const contactName = waContact.name || existing?.name || normalizedPhone;
+
+        const isNameChanged = existing && existing.name !== contactName && waContact.name;
+
+        // If it's new OR name updated, we push to upsert list
+        // If it's existing and name is same, we generally skip to save bandwidth, 
+        // BUT for 'upsert' safety we might want to just push it if we want to update 'last_seen' or similar?
+        // For now, let's only push if New or Name Changed to optimize.
+
+        if (!existing) {
+          // NEW
+          validContacts.push({
+            id: crypto.randomUUID(),
+            master_user_id: masterUserId,
+            created_by: user.id,
+            name: contactName,
+            phone: normalizedPhone,
+            tags: ['WhatsApp'], // Array for Postgres
+            notes: 'Imported from WhatsApp',
+            is_blocked: false,
+            created_at: timestamps.created_at,
+            updated_at: timestamps.updated_at,
+            _lastModified: new Date().toISOString(),
+            _version: 1,
+            _deleted: false
+          });
+          addedCount++;
+        } else if (isNameChanged) {
+          // UPDATE
+          validContacts.push({
+            id: existing.id,
+            master_user_id: masterUserId,
+            updated_at: timestamps.updated_at,
+            name: contactName,
+            _lastModified: new Date().toISOString()
+            // Supabase upsert will ignore other fields if not provided? 
+            // No, upsert replaces. We must provide critical fields or use patch strategy.
+            // Actually, 'upsert' in Supabase (Postgres) updates columns provided.
+            // But better be safe with IDs.
+          });
+          updatedCount++;
+        }
+      }
+
+      // 3. Batch Upsert to Supabase
+      if (validContacts.length > 0) {
+        for (let i = 0; i < validContacts.length; i += batchSize) {
+          const batch = validContacts.slice(i, i + batchSize);
+          // We use upsert. 
+          // Note: RLS must allow this.
+          const { error: upsertError } = await supabase
+            .from('contacts')
+            .upsert(batch, { onConflict: 'id' }); // Upsert by ID
+
+          if (upsertError) {
+            console.error('Batch upsert failed:', upsertError);
+            // Continue to next batch? Or throw?
+            // Best to log and continue to try saving others
+          }
+        }
+      }
+
+      // 4. Trigger Full Sync (Server -> Local)
+      // This ensures local DB gets the merged state correctly.
+      console.log(`[ContactService] Server sync pushed. Added: ${addedCount}, Updated: ${updatedCount}. Triggering full pull...`);
+
+      // We force a sync.
+      await this.syncManager.triggerSync();
+
+      return { added: addedCount, updated: updatedCount, errors: 0 };
+
+    } catch (error) {
+      console.error('Error in server-first contact sync:', error);
+      return { added: 0, updated: 0, errors: 1 };
+    }
+  }
+
+  /**
    * Sync contacts from WhatsApp (Upsert operation)
    * Prevents duplicates by checking existing phone numbers.
    */

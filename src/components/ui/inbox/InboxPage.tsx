@@ -267,21 +267,10 @@ export function InboxPage() {
                 throw new Error(result.error || 'Failed to send message');
             }
 
-            // 2. Save to Database
-            await messageService.createOutboundMessage({
-                contact_phone: selectedConversation.contact_phone,
-                contact_name: selectedConversation.contact_name,
-                content: content,
-                message_type: asset ? asset.category : 'text',
-                has_media: !!asset,
-                media_url: asset ? (asset.file_url || asset.url) : undefined
-            });
-
-            // 3. Refresh Messages and Conversation List
-            await Promise.all([
-                loadMessages(selectedConversation.contact_phone),
-                loadConversations()
-            ]);
+            // 2. Save and Refresh handled by onMessageReceived listener
+            // The listener picks up the 'messages.upsert' event (type: notify) from the backend
+            // even for outbound messages (fromMe: true).
+            // This prevents duplicate bubbles and ensures single source of truth.
 
         } catch (error) {
             console.error('Failed to send message:', error);

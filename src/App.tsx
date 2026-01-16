@@ -215,7 +215,7 @@ const MainApp = () => {
           name: c.name
         }));
 
-        const result = await contactService.upsertContactsFromWhatsApp(mapped);
+        const result = await contactService.syncWhatsAppContactsDirectlyToServer(mapped);
         console.log('[App] WhatsApp contacts synced (Batch Result):', result);
 
         if (result.added > 0 || result.updated > 0) {
@@ -364,6 +364,7 @@ const MainApp = () => {
         // Dismiss custom loading toast first, then show clean success
         sonnerToast.dismiss(TOAST_ID);
         sonnerToast.success(status.message, {
+          id: 'sync-complete-toast', // Unique ID to prevent duplicates
           duration: 4000,
         });
         return;
@@ -373,6 +374,7 @@ const MainApp = () => {
         // Dismiss custom loading toast first, then show clean error
         sonnerToast.dismiss(TOAST_ID);
         sonnerToast.error(status.message, {
+          id: 'sync-error-toast', // Unique ID to prevent duplicates
           duration: 5000,
         });
         return;

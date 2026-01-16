@@ -308,8 +308,10 @@ export class MessageService {
     }): Promise<Message | null> {
         // Strict Filter: Only allow personal chats (@s.whatsapp.net)
         // Groups (@g.us) and Channels/Newsletters (@newsletter) are ignored
-        if (!data.from.endsWith('@s.whatsapp.net')) {
-            // console.log('[MessageService] Ignoring non-personal message:', data.from);
+        // For outbound (fromMe), check 'to' field; for inbound, check 'from' field
+        const relevantJid = data.fromMe ? data.to : data.from;
+        if (!relevantJid || !relevantJid.includes('@s.whatsapp.net')) {
+            // console.log('[MessageService] Ignoring non-personal message:', relevantJid);
             return null;
         }
 

@@ -78,7 +78,9 @@ export const setupIPC = (
                 throw new Error('WhatsAppManager not initialized');
             }
 
-            await whatsappManager.disconnect();
+            // User requested disconnect -> Check if we should clear session
+            // Default behavior for manual disconnect is usually to logout/clear session
+            await whatsappManager.disconnect(true);
             return { success: true };
         } catch (error) {
             console.error('[IPC] whatsapp:disconnect error:', error);
