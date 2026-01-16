@@ -19,6 +19,7 @@ declare global {
                 onContactsReceived(callback: (contacts: any[]) => void): () => void;
                 onSyncStatus(callback: (status: { step: string; message: string }) => void): () => void;
                 resyncContacts(): Promise<boolean>;
+                fetchHistory(): Promise<{ success: boolean; error?: string }>;
                 getStatus(): Promise<{ ready: boolean }>;
                 connect(): Promise<{ success: boolean; error?: string }>;
                 disconnect(): Promise<void>;

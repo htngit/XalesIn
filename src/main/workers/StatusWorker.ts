@@ -58,8 +58,12 @@ export class StatusWorker {
                 console.log('[StatusWorker] Detected disconnection with existing session, attempting reconnect...');
                 try {
                     // Only attempt reconnect if not already connecting
-                    // WhatsAppManager.connect() handles the check, but we can double check here
-                    await this.whatsappManager.connect();
+                    // only attempt reconnect if the service was explicitly started
+                    if (this.whatsappManager.isServiceStarted()) {
+                        await this.whatsappManager.connect();
+                    } else {
+                        console.log('[StatusWorker] Service not started yet, skipping auto-reconnect');
+                    }
                 } catch (err) {
                     console.error('[StatusWorker] Reconnect failed:', err);
                 }

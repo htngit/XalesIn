@@ -181,6 +181,28 @@ export const setupIPC = (
     });
 
     /**
+     * Fetch History
+     */
+    ipcMain.handle('whatsapp:fetch-history', async () => {
+        try {
+            console.log('[IPC] whatsapp:fetch-history called');
+
+            if (!whatsappManager) {
+                throw new Error('WhatsAppManager not initialized');
+            }
+
+            const success = await whatsappManager.fetchHistory();
+            return { success };
+        } catch (error) {
+            console.error('[IPC] whatsapp:fetch-history error:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    /**
      * Process bulk message job
      */
     ipcMain.handle('whatsapp:process-job', async (_, { jobId, contacts, template, assets, delayConfig }) => {

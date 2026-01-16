@@ -173,7 +173,7 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
 
       // Validate PIN against the profile's stored PIN
       if (pinString === profile.pin) {
-        toast.success(intl.formatMessage({ id: 'auth.pin.welcome_success' }, { name: profile.name }));
+        // toast.success removed - transitioned to full screen loader in App.tsx
         onPINValidated({
           is_valid: true,
           role: profile.role as 'owner' | 'staff'

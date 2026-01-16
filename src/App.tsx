@@ -26,11 +26,23 @@ import { syncManager } from '@/lib/sync/SyncManager';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 import { toast as sonnerToast } from 'sonner';
+import { Loader2, Minus, Square } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UserProvider } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
 import { IntlProvider } from '@/lib/i18n/IntlProvider';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 // Debug component to log location
 const RouteDebug = () => {
@@ -165,9 +177,88 @@ const MainApp = () => {
   const { toast } = useToast();
   const [authData, setAuthData] = useState<AuthResponse | null>(null);
   const [pinData, setPinData] = useState<PINValidation | null>(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
-  const syncToastIdRef = useRef<string | number | undefined>(undefined);
+  const [showStopSyncConfirm, setShowStopSyncConfirm] = useState(false);
+
+
+  // Serial Processing Queue
+  const contactSyncQueue = useRef<any[][]>([]);
+  const isProcessingSync = useRef(false);
+
+  const processSyncQueue = async () => {
+    if (isProcessingSync.current) return;
+    isProcessingSync.current = true;
+
+    while (contactSyncQueue.current.length > 0) {
+      // 1. Check Cancellation flag before each batch
+      if (localStorage.getItem('autoSyncContacts') === 'false') {
+        console.log('[App] Auto-sync disabled mid-process. Clearing queue.');
+        contactSyncQueue.current = []; // Clear remaining items
+        isProcessingSync.current = false;
+        return;
+      }
+
+      // 2. Dequeue
+      const nextBatch = contactSyncQueue.current.shift();
+      if (!nextBatch) continue;
+
+      try {
+        console.log(`[App] Processing batch of ${nextBatch.length} contacts...`);
+        // Notify User Processing Started for this batch
+        // Notify User Processing Started for this batch
+
+        const contactService = serviceManager.getContactService();
+        const mapped = nextBatch.map(c => ({
+          phone: c.phone,
+          name: c.name
+        }));
+
+        const result = await contactService.upsertContactsFromWhatsApp(mapped);
+        console.log('[App] WhatsApp contacts synced (Batch Result):', result);
+
+        if (result.added > 0 || result.updated > 0) {
+          // Optional: Update toast description with progress if needed
+          // For now, we just let it run.
+        }
+      } catch (err) {
+        console.error('[App] Failed to sync contact batch:', err);
+      }
+
+      // Artificial delay to yield to main thread if needed
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    isProcessingSync.current = false;
+
+    // Final Success Toast? 
+    // We let onSyncStatus 'complete' handle the final success message
+    // because that event comes from the main process when Baileys sets is done.
+    // However, since we process purely on 'onContactsReceived', we might finish AFTER Baileys says complete.
+    // But typically 'onContactsReceived' fires during the process.
+  };
+
+  const handleStopSync = () => {
+    // 1. Disable Auto-Sync
+    localStorage.setItem('autoSyncContacts', 'false');
+    console.log('[App] User stopped sync manually. Auto-sync disabled.');
+
+    // Clear Queue immediately
+    contactSyncQueue.current = [];
+
+    // 2. Dismiss Sync Toast
+    sonnerToast.dismiss('whatsapp-sync-toast');
+
+    // 3. Show confirmation toast
+    sonnerToast.error("Sinkronisasi Dihentikan", {
+      description: "Proses sinkronisasi telah dibatalkan. Auto-sync dinonaktifkan.",
+      duration: 4000
+    });
+
+    // Close modal
+    setShowStopSyncConfirm(false);
+  };
 
   // Restore session on load
   useEffect(() => {
@@ -237,35 +328,14 @@ const MainApp = () => {
         return;
       }
 
-      // Notify User Sync Started
-      toast({
-        title: "Syncing Contacts...",
-        description: `Processing ${contacts.length} contacts from WhatsApp...`,
-        duration: 3000
-      });
+      // Notify User Sync Started (only if not already showing)
+      // Note: onSyncStatus usually handles the main loading toast.
 
-      try {
-        const contactService = serviceManager.getContactService();
-        // We need to map interface
-        const mapped = contacts.map(c => ({
-          phone: c.phone,
-          name: c.name
-        }));
+      // Enqueue
+      contactSyncQueue.current.push(contacts);
 
-        const result = await contactService.upsertContactsFromWhatsApp(mapped);
-        console.log('[App] WhatsApp contacts synced:', result);
-
-        if (result.added > 0 || result.updated > 0) {
-          // Using sonner toast for better visibility
-          toast({
-            title: "WhatsApp Sync Complete",
-            description: `Synced ${result.added} new and updated ${result.updated} contacts.`,
-            duration: 4000
-          });
-        }
-      } catch (err) {
-        console.error('[App] Failed to sync contacts:', err);
-      }
+      // Trigger Processing
+      processSyncQueue();
     });
 
     return () => {
@@ -274,6 +344,7 @@ const MainApp = () => {
 
   }, [pinData]);
 
+  // WhatsApp Sync Status Listener (Persistent Feedback)
   // WhatsApp Sync Status Listener (Persistent Feedback)
   useEffect(() => {
     // Debug log to confirm listener setup
@@ -284,54 +355,65 @@ const MainApp = () => {
       return;
     }
 
+    const TOAST_ID = 'whatsapp-sync-toast'; // Singleton ID to prevent stacking
+
     const unsubscribeSyncStatus = window.electron?.whatsapp?.onSyncStatus?.((status: { step: string, message: string }) => {
       console.log('[App] 🔄 SYNC EVENT RECEIVED:', status.step, status.message);
 
-      if (status.step === 'start') {
-        // Start persistent toast
-        syncToastIdRef.current = sonnerToast.loading(status.message, {
-          duration: Infinity,
-          description: "Please wait while we sync your contacts..."
+      if (status.step === 'complete') {
+        // Dismiss custom loading toast first, then show clean success
+        sonnerToast.dismiss(TOAST_ID);
+        sonnerToast.success(status.message, {
+          duration: 4000,
         });
+        return;
       }
-      else if (status.step === 'complete') {
-        // Update to success and clear ref
-        if (syncToastIdRef.current !== undefined) {
-          sonnerToast.success(status.message, {
-            id: syncToastIdRef.current,
-            duration: 4000,
-            description: "Your contacts are now up to date."
-          });
-          syncToastIdRef.current = undefined;
-        } else {
-          sonnerToast.success(status.message, { duration: 4000 });
-        }
+
+      if (status.step === 'error') {
+        // Dismiss custom loading toast first, then show clean error
+        sonnerToast.dismiss(TOAST_ID);
+        sonnerToast.error(status.message, {
+          duration: 5000,
+        });
+        return;
       }
-      else if (status.step === 'error') {
-        // Update to error and clear ref
-        if (syncToastIdRef.current !== undefined) {
-          sonnerToast.error(status.message, {
-            id: syncToastIdRef.current,
-            duration: 5000,
-            description: "Please check your connection."
-          });
-          syncToastIdRef.current = undefined;
-        } else {
-          sonnerToast.error(status.message);
-        }
-      }
-      else {
-        // Update loading state (disconnecting, connecting, waiting)
-        if (syncToastIdRef.current !== undefined) {
-          sonnerToast.loading(status.message, {
-            id: syncToastIdRef.current,
-            duration: Infinity
-          });
-        } else {
-          // Fallback if joined mid-stream
-          syncToastIdRef.current = sonnerToast.loading(status.message, { duration: Infinity });
-        }
-      }
+
+      // for 'start', 'connecting', 'disconnecting', 'waiting' -> Show Persistent Custom Toast
+      sonnerToast.custom((id) => (
+        <div className="flex flex-col gap-3 w-full max-w-[340px] bg-white dark:bg-zinc-950 border p-4 rounded-lg shadow-md overflow-hidden">
+          <div className="flex items-start gap-3">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 grid gap-1">
+              <p className="font-medium text-sm text-zinc-950 dark:text-zinc-50 break-words leading-tight">
+                {status.message}
+              </p>
+              {/* Removed misleading hardcoded "Syncing contacts..." text */}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t pt-2 mt-1 dark:border-zinc-800">
+            <button
+              onClick={() => sonnerToast.dismiss(id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 transition-colors"
+              title="Minimize (Process continues)"
+            >
+              <Minus className="h-3 w-3" />
+              Minimize
+            </button>
+            <button
+              onClick={() => setShowStopSyncConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
+              title="Stop Process"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              Hentikan
+            </button>
+          </div>
+        </div>
+      ), {
+        id: TOAST_ID, // Force reuse of same ID
+        duration: Infinity,
+      });
     });
 
     return () => {
@@ -373,8 +455,14 @@ const MainApp = () => {
       // 2. Update authData with the fetched quota
       setAuthData(prev => prev ? { ...prev, quota } : null);
 
-      // 3. Set PIN data to unlock the UI
-      setPinData(data);
+      // 3. Trigger Unlock Transition
+      setIsUnlocking(true);
+
+      // Delay actual unlock to show Welcome Screen
+      setTimeout(() => {
+        setPinData(data);
+        setIsUnlocking(false);
+      }, 1500); // 1.5 seconds for better UX
 
       // ... (existing sync logic)
       let masterUserId = authData?.user?.master_user_id;
@@ -399,6 +487,12 @@ const MainApp = () => {
         }
 
         syncManager.setMasterUserId(masterUserId);
+
+        // TRIGGER WHATSAPP ENGINE START (Defer until PIN validated)
+        console.log('[App] PIN Validated, starting WhatsApp engine...');
+        window.electron?.whatsapp?.connect().catch(err => {
+          console.error('[App] Failed to start WhatsApp engine:', err);
+        });
 
         // 5. Check connection speed and decide sync strategy
         const { checkConnectionSpeed, getSyncPercentageBySpeed, getSyncStrategyBySpeed } = await import('@/lib/utils/connectionSpeed');
@@ -556,6 +650,22 @@ const MainApp = () => {
         {!isAuthenticated ? (
           // 1. Not Authenticated -> Public Routes
           <PublicRoutes onLoginSuccess={handleLoginSuccess} />
+        ) : isUnlocking ? (
+          // 1.5 Transition -> Welcome Loader
+          <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center gap-6 animate-in fade-in duration-300">
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                <Loader2 className="h-12 w-12 animate-spin text-primary relative z-10" />
+              </div>
+              <div className="text-center space-y-1">
+                <h2 className="text-2xl font-semibold tracking-tight text-foreground/90">
+                  Selamat Datang, {authData?.user.name}
+                </h2>
+                <p className="text-muted-foreground text-sm">Menyiapkan dashboard anda...</p>
+              </div>
+            </div>
+          </div>
         ) : !isPINValidated ? (
           // 2. Authenticated but Locked -> PIN Modal
           // We render this as a full-screen overlay or the only content
@@ -575,6 +685,29 @@ const MainApp = () => {
         )}
         <Toaster />
         <SonnerToaster position="top-right" richColors />
+
+        {/* Sync Stop Confirmation Dialog */}
+        <AlertDialog open={showStopSyncConfirm} onOpenChange={setShowStopSyncConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hentikan Sinkronisasi?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Proses sinkronisasi kontak akan dihentikan saat ini juga.
+                <br /><br />
+                Fitur <strong>Auto Sync</strong> di pengaturan juga akan dimatikan agar sinkronisasi tidak berjalan otomatis di sesi berikutnya.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowStopSyncConfirm(false)}>Batal</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleStopSync}
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              >
+                Ya, Hentikan
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Router>
   );

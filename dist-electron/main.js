@@ -1,1 +1,5 @@
-"use strict";require("electron");require("path");require("fs");require("./main-CL02rezv.js");
+"use strict";
+require("electron");
+require("path");
+require("fs");
+require("./main-CDLIvqxZ.js");

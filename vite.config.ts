@@ -20,9 +20,17 @@ export default defineConfig({
               external: [
                 'puppeteer',
                 'qrcode-terminal',
-                '@whiskeysockets/baileys',
-                'pino'
+                'pino',
+                'sharp',
+                'bufferutil',
+                'utf-8-validate'
               ]
+            }
+          },
+          resolve: {
+            alias: {
+              // Ensure libsignal is resolved correctly during bundling
+              'libsignal': path.resolve(__dirname, 'node_modules/libsignal')
             }
           }
         }

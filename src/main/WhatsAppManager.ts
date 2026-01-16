@@ -4,7 +4,7 @@ import * as qrcode from 'qrcode-terminal';
 import { MessageReceiverWorker } from './workers/MessageReceiverWorker';
 import path from 'path';
 import fs from 'fs';
-import pino from 'pino';
+// import pino from 'pino';
 import { Boom } from '@hapi/boom';
 
 const BaileysLib = Baileys as any;
@@ -22,9 +22,8 @@ type WASocket = Baileys.WASocket;
 type AnyMessageContent = Baileys.AnyMessageContent;
 
 // Suppress Baileys verbose logging in production
-// Pino might also check for default export in some envs
-const pinoLogger = (pino as any).default || pino;
-const logger = pinoLogger({ level: 'silent' });
+// Pino replaced with simple mock logger defined in connect()
+
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'ready';
 
@@ -39,6 +38,11 @@ export class WhatsAppManager {
     private status: ConnectionStatus = 'disconnected';
     private isReconnecting: boolean = false;
     private _qrCodeData: string | null = null; // Stored for potential future use
+    private reconnectAttempts: number = 0;
+    private maxReconnectAttempts: number = 5;
+
+    private isStarted: boolean = false; // Guard to prevent auto-connect before explicit start
+    private isHistorySyncActive: boolean = false; // Guard to suppress generic messages during history sync
 
     // File download cache
     private fileCache: Map<string, string> = new Map();
@@ -99,7 +103,7 @@ export class WhatsAppManager {
     /**
      * Connect to WhatsApp using Baileys
      */
-    async connect(force: boolean = false): Promise<boolean> {
+    async connect(force: boolean = false, syncHistory: boolean = false): Promise<boolean> {
         try {
             if (this.status === 'ready' && !force) {
                 console.log('[WhatsAppManager] Already connected');
@@ -111,7 +115,8 @@ export class WhatsAppManager {
                 return false;
             }
 
-            console.log(`[WhatsAppManager] Starting Baileys connection (Force: ${force})...`);
+            console.log(`[WhatsAppManager] Starting Baileys connection (Force: ${force}, SyncHistory: ${syncHistory})...`);
+            this.isStarted = true;
             this.status = 'connecting';
             this.broadcastStatus('connecting');
 
@@ -123,19 +128,51 @@ export class WhatsAppManager {
 
             const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-            // Get latest Baileys version
-            const { version } = await fetchLatestBaileysVersion();
-            console.log(`[WhatsAppManager] Using Baileys version: ${version.join('.')}`);
+            // Simple mock logger to replace Pino and avoid bundle/ASAR issues in Electron
+            const simpleLogger: any = {
+                level: 'silent',
+                trace: () => { },
+                debug: () => { },
+                info: () => { },
+                warn: () => { },
+                error: () => { },
+                fatal: () => { },
+                child: () => simpleLogger,
+            };
+
+            // Get latest Baileys version with fallback
+            // FOR DEBUGGING: Using strict hardcoded stable version [2, 2413, 1]
+            // We disable fetchLatestBaileysVersion temporarily to isolate version issues
+            let version = [2, 2413, 1];
+
+            // Cleanup existing socket if present (prevent zombie listeners)
+            if (this.sock) {
+                console.log('[WhatsAppManager] Closing existing socket before new connection...');
+                try {
+                    this.sock.end(undefined);
+                } catch (e) {
+                    console.error('[WhatsAppManager] Error closing existing socket:', e);
+                }
+                this.sock = null;
+            }
+            try {
+                const v = await fetchLatestBaileysVersion();
+                version = (v as any).version;
+                console.log(`[WhatsAppManager] Using fetched Baileys version: ${version.join('.')}`);
+            } catch (e) {
+                console.warn('[WhatsAppManager] Failed to fetch latest version, using fallback:', e);
+            }
+            console.log(`[WhatsAppManager] Final Baileys version used: ${version.join('.')}`);
 
             // Create Baileys socket
             this.sock = makeWASocket({
                 version,
                 auth: state,
                 printQRInTerminal: false, // We handle QR ourselves
-                logger,
+                logger: simpleLogger, // Use our safe request logger
                 browser: Browsers.windows('Desktop'),
                 generateHighQualityLinkPreview: true,
-                syncFullHistory: false, // Don't sync full history for performance
+                syncFullHistory: syncHistory, // Use parameter to control history sync
             });
 
             // Setup event handlers
@@ -165,10 +202,17 @@ export class WhatsAppManager {
      * Setup Baileys event handlers
      */
     private setupEventHandlers(saveCreds: () => Promise<void>): void {
-        if (!this.sock) return;
+        const sock = this.sock;
+        if (!sock) return;
 
         // Connection update events
-        this.sock.ev.on('connection.update', async (update: any) => {
+        sock.ev.on('connection.update', async (update: any) => {
+            // Guard: Ignore events from old zombie sockets
+            if (this.sock !== sock) {
+                console.log('[WhatsAppManager] Ignoring event from old socket');
+                return;
+            }
+
             const { connection, lastDisconnect, qr } = update;
 
             // Handle QR code
@@ -210,9 +254,38 @@ export class WhatsAppManager {
                         });
                     }
                 } else if (shouldReconnect && !this.isReconnecting) {
-                    // Auto-reconnect after a delay
+                    // Prevent auto-reconnect if:
+                    // 1. We are in the middle of a history fetch soft-reconnect
+                    // 2. statusCode is undefined (intentional disconnect, not error)
+                    if (this.isHistorySyncActive) {
+                        console.log('[WhatsAppManager] Intentional disconnect for history sync. Skipping auto-reconnect.');
+                        return;
+                    }
+
+                    if (statusCode === undefined) {
+                        console.log('[WhatsAppManager] Intentional disconnect (statusCode undefined). Skipping auto-reconnect.');
+                        return;
+                    }
+
+                    // Auto-reconnect with exponential backoff
+                    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                        console.log(`[WhatsAppManager] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+                        if (this.mainWindow) {
+                            this.mainWindow.webContents.send('whatsapp:error', {
+                                type: 'max_reconnect',
+                                message: 'Unable to maintain connection. Please try reconnecting manually.'
+                            });
+                        }
+                        return;
+                    }
+
                     this.isReconnecting = true;
-                    console.log('[WhatsAppManager] Attempting auto-reconnect in 3 seconds...');
+                    this.reconnectAttempts++;
+
+                    // Exponential backoff: 3s, 6s, 12s, 24s, 48s
+                    const delay = Math.min(3000 * Math.pow(2, this.reconnectAttempts - 1), 60000);
+                    console.log(`[WhatsAppManager] Attempting auto-reconnect #${this.reconnectAttempts} in ${delay / 1000} seconds...`);
+                    console.log(`[WhatsAppManager] Disconnect reason: statusCode=${statusCode}, error=${JSON.stringify((lastDisconnect?.error as Boom)?.output?.payload)}`);
 
                     setTimeout(async () => {
                         try {
@@ -221,7 +294,7 @@ export class WhatsAppManager {
                             console.error('[WhatsAppManager] Auto-reconnect failed:', err);
                         }
                         this.isReconnecting = false;
-                    }, 3000);
+                    }, delay);
                 }
             } else if (connection === 'open') {
                 console.log('[WhatsAppManager] Client is ready!');
@@ -229,21 +302,24 @@ export class WhatsAppManager {
                 this._qrCodeData = null;
                 this.broadcastStatus('ready');
 
-                // Clear reconnecting flag
+                // Clear reconnecting flag and reset attempts counter
                 this.isReconnecting = false;
+                this.reconnectAttempts = 0;
 
-                // Notify renderer
+                // Notify renderer - connection is ready (no sync-status here to avoid conflicts)
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                     this.mainWindow.webContents.send('whatsapp:ready');
+                    // REMOVED: sync-status 'start' message - it was causing conflicts
+                    // Contact sync and history fetch have their own dedicated events
                 }
             }
         });
 
         // Credentials update - save to disk
-        this.sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', saveCreds);
 
         // Incoming messages
-        this.sock.ev.on('messages.upsert', async (m: any) => {
+        sock.ev.on('messages.upsert', async (m: any) => {
             console.log(`[WhatsAppManager] messages.upsert type: ${m.type}, count: ${m.messages.length}`);
 
             // Allow 'notify' (realtime) and 'append' (history)
@@ -279,7 +355,7 @@ export class WhatsAppManager {
 
                 // Construct clean payload for renderer
                 // Construct clean payload for renderer
-                const myJid = this.sock?.user?.id || 'me';
+                const myJid = sock.user?.id || 'me';
                 const isOutbound = msg.key.fromMe || false;
 
                 const payload = {
@@ -313,7 +389,7 @@ export class WhatsAppManager {
         });
 
         // Contact sync events
-        this.sock.ev.on('contacts.upsert', (contacts: any[]) => {
+        sock.ev.on('contacts.upsert', (contacts: any[]) => {
             console.log(`[WhatsAppManager] Received ${contacts.length} contacts from WhatsApp`);
 
             // Map and send to renderer
@@ -343,6 +419,7 @@ export class WhatsAppManager {
                     this.sock.end(undefined);
                 }
                 this.sock = null;
+                this.isStarted = false; // Stop auto-reconnection logic
             }
 
             if (clearSession) {
@@ -653,5 +730,55 @@ export class WhatsAppManager {
             this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'error', message: 'Re-sync failed' });
             return false;
         }
+    }
+
+    /**
+     * Fetch message history by reconnecting with syncFullHistory: true
+     * This is a "Soft Reconnect"
+     */
+    async fetchHistory(): Promise<boolean> {
+        console.log('[WhatsAppManager] Fetching history via soft reconnect...');
+        this.isHistorySyncActive = true;
+        this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'start', message: 'Initializing history fetch...' });
+
+        try {
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'disconnecting', message: 'Preparing connection...' });
+
+            // Disconnect without clearing session
+            await this.disconnect(false);
+
+            // Small delay to ensure clean state
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'connecting', message: 'Fetching history from WhatsApp...' });
+
+            // Reconnect with syncHistory = true
+            await this.connect(true, true);
+
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'waiting', message: 'Receiving history...' });
+
+            // Give it a moment (though messages will flow via listeners)
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'complete', message: 'History fetch active' });
+
+            return true;
+        } catch (error) {
+            console.error('[WhatsAppManager] Fetch history failed:', error);
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'error', message: 'History fetch failed' });
+            return false;
+        } finally {
+            // Reset flag after a delay to ensure "Connected" doesn't flash immediately if state updates
+            setTimeout(() => {
+                this.isHistorySyncActive = false;
+            }, 5000);
+        }
+    }
+
+    /**
+     * Check if the service has been explicitly started
+     */
+    isServiceStarted(): boolean {
+        return this.isStarted;
     }
 }
