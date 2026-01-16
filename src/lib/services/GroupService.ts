@@ -78,9 +78,8 @@ export class GroupService {
   private async backgroundSyncGroups(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
+      // Initial sync is now handled by InitialSyncOrchestrator
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }

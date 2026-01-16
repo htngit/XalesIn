@@ -60,12 +60,12 @@ export class ContactService {
     // Start auto sync
     this.syncManager.startAutoSync();
 
-    // Initial sync with error handling
-    // Initial sync with error handling (non-blocking)
-    this.syncManager.triggerSync().catch(error => {
-      console.warn('Initial sync failed, will retry later:', error);
-    });
+    // Note: We DO NOT trigger sync here anymore.
+    // Initial sync is handled by InitialSyncOrchestrator to allow for background processing and UI feedback.
+    // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
   }
+
+
 
 
   /**
@@ -74,9 +74,8 @@ export class ContactService {
   private async backgroundSyncContacts(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
+      // Initial sync is now handled by InitialSyncOrchestrator
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }
@@ -557,20 +556,54 @@ export class ContactService {
         ...newLocalContact
       };
 
+      // Server-First Approach if Online
+      // Server-First Approach if Online
+      if (isOnline) {
+        try {
+          // Prepare Supabase payload
+          const syncData = localToSupabase(localContact);
+
+          const { error } = await supabase
+            .from('contacts')
+            .insert(syncData);
+
+          if (error) throw error;
+
+          // Trigger full sync to update local DB (and ensuring consistency)
+          await this.syncManager.triggerSync();
+
+          // Return the contact from local DB (which should be updated by sync)
+          const syncedContact = await this.getContactById(contactId);
+          if (syncedContact) return syncedContact;
+
+          // If sync was slow and didn't bring it back yet, 
+          // we manually add it LOCALLY as 'synced' so we don't queue it again.
+          const manualSyncedContact = { ...localContact, _syncStatus: 'synced' as const };
+          await db.contacts.add(manualSyncedContact);
+
+          // Return enriched
+          const enriched = await this.enrichContactsWithGroups([manualSyncedContact]);
+          return enriched[0];
+
+        } catch (serverError) {
+          console.error('Server-First Create Failed, falling back to Local:', serverError);
+          // Fallback to local logic below...
+        }
+      }
+
       await db.contacts.add(localContact);
 
       // Transform for sync queue (convert Date objects to ISO strings)
       const syncData = localToSupabase(localContact);
 
-      // Try to sync immediately if online, otherwise queue for later
+      // Try to sync immediately if online (and server-first failed or skipped), otherwise queue for later
       if (isOnline) {
+        // ... existing queue logic ...
         try {
           await this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData);
         } catch (syncError) {
           console.warn('Immediate sync failed, will retry later:', syncError);
-          // Still add to queue for later retry
-          this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData)
-            .catch(console.error);
+          this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData).catch(console.error);
         }
       } else {
         // Offline mode: queue for later sync
@@ -654,6 +687,36 @@ export class ContactService {
 
         } catch (err) {
           errors.push(`Failed to prepare contact ${contactData.name}: ${err}`);
+        }
+      }
+
+      // Batch Operations
+
+      // Server-First Approach for Bulk
+      if (isOnline) {
+        try {
+          const supabaseBatch = localContacts.map(c => localToSupabase(c));
+
+          // Chunking for Supabase/Postgres limits
+          const chunkSize = 100;
+          for (let i = 0; i < supabaseBatch.length; i += chunkSize) {
+            const chunk = supabaseBatch.slice(i, i + chunkSize);
+            const { error } = await supabase.from('contacts').insert(chunk);
+            if (error) throw error;
+          }
+
+          // Trigger Sync
+          await this.syncManager.triggerSync();
+
+          return {
+            success: true,
+            created: localContacts.length,
+            errors: []
+          };
+
+        } catch (e) {
+          console.error('Server-First Bulk Create Failed, falling back to Local:', e);
+          // Fallback to local
         }
       }
 
@@ -967,6 +1030,52 @@ export class ContactService {
         _version: syncMetadata._version
       };
 
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Update
+      // Server-First Update
+      if (isOnline) {
+        try {
+          // Prepare payload
+          const updatePayload = {
+            ...contactData,
+            updated_at: timestamps.updated_at,
+            _lastModified: syncMetadata._lastModified,
+            _version: syncMetadata._version,
+            _syncStatus: 'synced' // Directly synced
+          };
+
+          // We'll update the 'data' part.
+          const { error } = await supabase
+            .from('contacts')
+            .update(updatePayload)
+            .eq('id', id);
+
+          if (error) throw error;
+
+          await this.syncManager.triggerSync();
+          const synced = await this.getContactById(id);
+          if (synced) return synced;
+
+          // If sync didn't update local yet, update local manually as 'synced'
+          if (!existingContact) throw new Error("Contact lost during update");
+
+          const manualUpdate = {
+            ...existingContact,
+            ...updatePayload,
+            id: existingContact.id, // Explicitly include ID
+            _deleted: existingContact._deleted, // Explicitly preserve deleted status
+            _syncStatus: 'synced' as const
+          };
+          await db.contacts.update(id, manualUpdate);
+          const enriched = await this.enrichContactsWithGroups([manualUpdate]);
+          return enriched[0] || null;
+
+        } catch (e) {
+          console.error('Server-First Update Failed, falling back:', e);
+        }
+      }
+
       // Update local database
       await db.contacts.update(id, updateData);
 
@@ -1003,7 +1112,44 @@ export class ContactService {
 
       await this.getMasterUserId();
 
-      // Check if contact exists
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Approach
+      // Server-First Approach
+      if (isOnline) {
+        try {
+          const timestamps = addTimestamps({}, true);
+
+          // Soft Delete on Server
+          const { error } = await supabase
+            .from('contacts')
+            .update({
+              _deleted: true,
+              updated_at: timestamps.updated_at
+            })
+            .eq('id', id)
+            .eq('master_user_id', await this.getMasterUserId());
+
+          if (error) throw error;
+
+          // Trigger Sync
+          await this.syncManager.triggerSync();
+
+          // Force local update to ensure UI reflects it immediately if sync lags
+          await db.contacts.update(id, {
+            _deleted: true,
+            updated_at: timestamps.updated_at,
+            _syncStatus: 'synced'
+          });
+
+          return true;
+
+        } catch (e) {
+          console.error('Server-First Delete Failed:', e);
+        }
+      }
+
+      // Check if contact exists locally
       const existingContact = await db.contacts.get(id);
 
       if (!existingContact || existingContact._deleted) {
@@ -1054,12 +1200,50 @@ export class ContactService {
    */
   async deleteMultipleContacts(ids: string[]): Promise<{ success: boolean; deletedCount: number }> {
     try {
-      await this.getMasterUserId(); // Ensure initialized
+      const masterUserId = await this.getMasterUserId();
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Batch Delete
+      if (isOnline) {
+        try {
+          const timestamps = addTimestamps({}, true);
+
+          // Chunking for safe queries
+          const chunkSize = 100;
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const { error } = await supabase
+              .from('contacts')
+              .update({
+                _deleted: true,
+                updated_at: timestamps.updated_at
+              })
+              .in('id', chunk)
+              .eq('master_user_id', masterUserId);
+
+            if (error) throw error;
+          }
+
+          await this.syncManager.triggerSync();
+
+          return {
+            success: true,
+            deletedCount: ids.length
+          };
+
+        } catch (e) {
+          console.error('Server-First Batch Delete Failed:', e);
+        }
+      }
 
       let deletedCount = 0;
-
       for (const id of ids) {
         try {
+          // Fallback to individual local deletes (which handles queueing)
+          // We bypass the server-first check inside deleteContact to avoid double sync if we were calling it?
+          // But deleteContact now checks isOnline.
+          // If we came here, it likely means isOnline is false, or server failed.
+          // So calling deleteContact is safe as it will use the local path.
           await this.deleteContact(id);
           deletedCount++;
         } catch (error) {

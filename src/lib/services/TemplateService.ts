@@ -67,9 +67,9 @@ export class TemplateService {
   private async backgroundSyncTemplates(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(error => { // Removed to prevent blocking initialization
+      //   console.warn('Background sync failed:', error);
+      // });
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }

@@ -125,6 +125,10 @@ export class SyncManager {
   private currentConfig: SyncConfig;
   private masterUserId: string | null = null;
 
+  // Track ongoing syncs to prevent race conditions
+  private _isInitialSyncInProgress: boolean = false;
+  private _tableSyncInProgress: Map<string, boolean> = new Map();
+
   // Enhanced properties for new features
   private activityConfig: ActivityConfig;
   private connectionState: ConnectionState;
@@ -238,6 +242,18 @@ export class SyncManager {
         console.error('Error in sync event listener:', error);
       }
     });
+  }
+
+  public setInitialSyncInProgress(value: boolean): void {
+    this._isInitialSyncInProgress = value;
+    if (!value) {
+      // Initial sync done, restart autoSync if configured
+      this.startAutoSync();
+    }
+  }
+
+  public isInitialSyncInProgress(): boolean {
+    return this._isInitialSyncInProgress;
   }
 
   /**
@@ -452,7 +468,16 @@ export class SyncManager {
   /**
    * Start automatic sync with dynamic intervals
    */
+  /**
+   * Start automatic sync with dynamic intervals
+   */
   startAutoSync() {
+    // Don't start if initial sync is running - prevent overlap
+    if (this._isInitialSyncInProgress) {
+      console.log('SyncManager: AutoSync delayed - Initial sync in progress');
+      return;
+    }
+
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
@@ -568,33 +593,31 @@ export class SyncManager {
       // Get pending sync operations with priority sorting
       const pendingOps = await this.getPrioritizedSyncOperations();
 
-      if (pendingOps.length === 0) {
-        this.setStatus(SyncStatus.IDLE, 'No changes to sync');
-        return;
-      }
-
-      this.emit({
-        type: 'sync_start',
-        message: `Syncing ${pendingOps.length} operations`,
-        total: pendingOps.length
-      });
-
-      // Process operations in optimized batches with progress tracking
-      let processedCount = 0;
-      for (let i = 0; i < pendingOps.length; i += this.currentConfig.batchSize) {
-        const batch = pendingOps.slice(i, i + this.currentConfig.batchSize);
-        await this.processBatchWithRetry(batch);
-
-        processedCount += batch.length;
+      // Process pending PUSH operations if any exist
+      if (pendingOps.length > 0) {
         this.emit({
-          type: 'progress_update',
-          progress: processedCount,
-          total: pendingOps.length,
-          message: `Processed ${processedCount}/${pendingOps.length} operations`
+          type: 'sync_start',
+          message: `Syncing ${pendingOps.length} operations`,
+          total: pendingOps.length
         });
+
+        // Process operations in optimized batches with progress tracking
+        let processedCount = 0;
+        for (let i = 0; i < pendingOps.length; i += this.currentConfig.batchSize) {
+          const batch = pendingOps.slice(i, i + this.currentConfig.batchSize);
+          await this.processBatchWithRetry(batch);
+
+          processedCount += batch.length;
+          this.emit({
+            type: 'progress_update',
+            progress: processedCount,
+            total: pendingOps.length,
+            message: `Processed ${processedCount}/${pendingOps.length} operations`
+          });
+        }
       }
 
-      // Pull updates from server with caching
+      // ALWAYS pull updates from server (don't skip based on pending ops count)
       await this.pullFromServerWithCache();
 
       // Update sync metrics
@@ -1138,121 +1161,235 @@ export class SyncManager {
   /**
    * Pull updates for a specific table from server
    */
-  private async pullTableFromServer(tableName: string): Promise<void> {
-    const supabaseTable = this.mapTableName(tableName);
-    const localTable = db.table(tableName as any);
+  /**
+   * Pull updates for a specific table from server
+   * @param options Configuration options
+   */
+  public async pullTableFromServer(tableName: string, options?: { backgroundProcessing?: boolean }): Promise<void> {
+    // Check if sync already in progress for this table
+    if (this._tableSyncInProgress.get(tableName)) {
+      console.log(`SyncManager: Sync already in progress for ${tableName}, skipping`);
+      return;
+    }
 
-    // Get last sync timestamp for this table
+    this._tableSyncInProgress.set(tableName, true);
+
+    try {
+      // 1. Fetch Phase (Blocking)
+      const serverRecords = await this._fetchServerRecords(tableName);
+
+      if (!serverRecords || serverRecords.length === 0) {
+        console.log(`SyncManager: No new records for ${tableName}`);
+        // Even if no records, update timestamp to prevent repeated checks
+        await this.setLastSyncTime(tableName, nowISO());
+        return;
+      }
+
+      console.log(`SyncManager: Fetched ${serverRecords.length} records for ${tableName}. Background Processing: ${options?.backgroundProcessing}`);
+
+      // 2. Process Phase
+      if (options?.backgroundProcessing) {
+        // Fire and Forget - Process in background
+        // Use wrapper to ensure lock is released when done
+        this._processServerRecordsWrapper(tableName, serverRecords).catch(err => {
+          console.error(`SyncManager: Background processing failed for ${tableName}`, err);
+          // Lock release is handled in wrapper's finally block
+        });
+        // Return immediately to allow UI to unblock
+        return;
+      } else {
+        // Blocking - Wait for completion
+        await this._processServerRecords(tableName, serverRecords);
+      }
+    } finally {
+      // For blocking calls (backgroundProcessing = false), release lock here.
+      // For background calls, we returned early, so this finally block runs immediately (before background job finishes).
+      // However, we want to keep the lock active if background job is running.
+      // So checks: if NOT backgroundProcessing, release lock.
+      // If backgroundProcessing, we do NOTHING here (wrapper releases it).
+
+      if (!options?.backgroundProcessing) {
+        this._tableSyncInProgress.set(tableName, false);
+      }
+    }
+  }
+
+  // Helper to manage background lock release
+  private async _processServerRecordsWrapper(tableName: string, serverRecords: any[]) {
+    try {
+      await this._processServerRecords(tableName, serverRecords);
+    } finally {
+      this._tableSyncInProgress.set(tableName, false);
+    }
+  }
+
+  /**
+   * INTERNAL: Fetch records from server (RPC or Standard Query)
+   */
+  private async _fetchServerRecords(tableName: string): Promise<any[] | null> {
+    const supabaseTable = this.mapTableName(tableName);
     const lastSync = await this.getLastSyncTime(tableName);
 
     // Use appropriate timestamp field based on table
     let timestampField = 'updated_at';
     if (tableName === 'userSessions') {
-      // user_sessions table uses last_active or created_at instead of updated_at
-      timestampField = 'last_active'; // Prefer last_active for user sessions
+      timestampField = 'last_active';
     }
 
-    // Fetch updated records from server
-    console.log(`SyncManager: pullTableFromServer - Pulling ${tableName} from server. MasterID: ${this.masterUserId}, LastSync: ${lastSync}`);
+    console.log(`SyncManager: Fetching ${tableName} from server. MasterID: ${this.masterUserId}, LastSync: ${lastSync}`);
 
-    const { data: serverRecords, error } = await supabase
-      .from(supabaseTable)
-      .select('*')
-      .eq('master_user_id', this.masterUserId)
-      .gte(timestampField, lastSync);
+    let serverRecords: any[] | null = null;
+    let error: any = null;
+
+    if (tableName === 'contacts') {
+      // Use RPC for contacts to bypass row limit
+      console.log('SyncManager: Using RPC sync_pull_contacts for contacts table');
+      // Logic to decode JSON RPC Response
+      const result = await supabase.rpc('sync_pull_contacts', { p_master_user_id: this.masterUserId });
+
+      if (result.data) {
+        // If RPC returns JSON, it might be nested or direct array depending on implementation
+        // Our migration returns JSON directly.
+        serverRecords = result.data as any[];
+      }
+      error = result.error;
+      console.log('SyncManager: RPC returned', serverRecords?.length, 'contacts');
+
+    } else {
+      // Standard Query
+      const result = await supabase
+        .from(supabaseTable)
+        .select('*')
+        .eq('master_user_id', this.masterUserId)
+        .gte(timestampField, lastSync);
+      serverRecords = result.data;
+      error = result.error;
+    }
 
     if (error) {
-      console.error(`SyncManager: pullTableFromServer - Error pulling ${tableName}:`, error);
+      console.error(`SyncManager: Error fetching ${tableName}:`, error);
       throw error;
     }
 
-    console.log(`SyncManager: pullTableFromServer - Pulled ${serverRecords?.length || 0} records for ${tableName} from server`);
+    return serverRecords;
+  }
 
-    if (!serverRecords || serverRecords.length === 0) return;
+  /**
+   * INTERNAL: Process records (Conflict Resolution & Saving)
+   */
+  private async _processServerRecords(tableName: string, serverRecords: any[]): Promise<void> {
+    const localTable = db.table(tableName as any);
+    let addedCount = 0;
+    let updatedCount = 0;
+    let ignoredCount = 0;
+    const total = serverRecords.length;
 
-    // Process each server record with enhanced conflict resolution
-    for (const serverRecord of serverRecords) {
-      try {
-        // Ensure server record timestamps are in consistent ISO string format
-        const normalizedServerRecord = this.normalizeServerRecordTimestamps(serverRecord);
+    console.log(`SyncManager: Starting processing for ${tableName} (${total} records)`);
 
-        const localRecord = await localTable.get(normalizedServerRecord.id);
+    this.emit({
+      type: 'sync_progress',
+      table: tableName,
+      current: 0,
+      total: total,
+      phase: 'processing'
+    } as any);
 
-        if (!localRecord) {
-          // New record from server - add to local with validation
-          const validatedData = validateData(normalizedServerRecord, tableName as any);
-          if (validatedData) {
-            const localRecord = {
-              ...validatedData,
-              _syncStatus: 'synced' as const,
-              _lastModified: nowISO(),
-              _version: 1,
-              _deleted: false
-            };
-            await localTable.add(localRecord);
-            this.syncMetrics.totalOperations++;
-            this.syncMetrics.successfulOperations++;
-          } else {
-            console.error(`Validation failed for new server record ${normalizedServerRecord.id} in ${tableName}`);
-            this.syncMetrics.failedOperations++;
+    const CHUNK_SIZE = 50;
+
+    for (let i = 0; i < total; i += CHUNK_SIZE) {
+      const chunk = serverRecords.slice(i, i + CHUNK_SIZE);
+
+      // Process chunk
+      for (const [chunkIndex, serverRecord] of chunk.entries()) {
+        const index = i + chunkIndex;
+
+        try {
+          // Emit progress periodically
+          if (index % 50 === 0 || index === total - 1) {
+            this.emit({
+              type: 'sync_progress',
+              table: tableName,
+              current: index + 1,
+              total: total,
+              phase: 'processing'
+            } as any);
           }
-        } else {
-          // Check for conflicts using enhanced resolution
-          const conflictResult = await this.resolveConflict(tableName, normalizedServerRecord.id, localRecord, normalizedServerRecord);
 
-          if (conflictResult.resolved) {
-            // Apply resolved data with normalized timestamps
-            const updatedRecord = {
-              ...this.normalizeServerRecordTimestamps(conflictResult.data),
-              _syncStatus: 'synced' as const,
-              _lastModified: nowISO(),
-              _version: (localRecord._version || 0) + 1,
-              _deleted: false
-            };
+          const normalizedServerRecord = this.normalizeServerRecordTimestamps(serverRecord);
+          // Optimization: Check if record exists in local DB first to avoid unnecessary processing
+          // If we process 6700 records, this await is fine as we yield between chunks
+          const localRecord = await localTable.get(normalizedServerRecord.id);
 
-            await localTable.update(normalizedServerRecord.id, updatedRecord);
-            this.syncMetrics.totalOperations++;
-            this.syncMetrics.successfulOperations++;
-
-            // Emit conflict event if manual resolution is needed
-            if (this.currentConfig.conflictResolution === ConflictResolution.MANUAL) {
-              this.emit({
-                type: 'conflict_detected',
-                table: tableName,
-                recordId: normalizedServerRecord.id,
-                message: conflictResult.userNotification || `Conflict detected for record ${normalizedServerRecord.id} in ${tableName}`
+          if (!localRecord) {
+            // New Record
+            const validatedData = validateData(normalizedServerRecord, tableName as any);
+            if (validatedData) {
+              await localTable.add({
+                ...validatedData,
+                _syncStatus: 'synced',
+                _lastModified: nowISO(),
+                _version: 1,
+                _deleted: false
               });
+              addedCount++;
+              this.syncMetrics.successfulOperations++;
+            } else {
+              ignoredCount++;
             }
-
-            // Emit user notification for significant conflicts
-            if (conflictResult.userNotification) {
-              this.emit({
-                type: 'user_notification',
-                table: tableName,
-                recordId: normalizedServerRecord.id,
-                message: conflictResult.userNotification,
-                notificationType: 'warning',
-                userMessage: conflictResult.userNotification
-              });
-            }
-
-            // Log audit information
-            console.log(`Conflict resolved: ${conflictResult.auditLog}`);
           } else {
-            console.error(`Failed to resolve conflict for ${tableName}:${normalizedServerRecord.id}`);
-            this.syncMetrics.failedOperations++;
+            // Conflict Resolution
+            if (tableName === 'contacts') {
+              // Contacts: Use conflict resolution (Last Write Wins) - Heavy logic
+              const conflictResult = await this.resolveConflict(tableName, normalizedServerRecord.id, localRecord, normalizedServerRecord);
+              if (conflictResult.resolved) {
+                await localTable.update(normalizedServerRecord.id, {
+                  ...this.normalizeServerRecordTimestamps(conflictResult.data),
+                  _syncStatus: 'synced',
+                  _lastModified: nowISO(),
+                  _version: (localRecord._version || 0) + 1,
+                  _deleted: false
+                });
+                updatedCount++;
+                this.syncMetrics.successfulOperations++;
+              } else {
+                ignoredCount++;
+              }
+            } else {
+              // Non-contacts (Templates, Messages, etc): Server wins, direct overwrite (faster)
+              await localTable.update(normalizedServerRecord.id, {
+                ...this.normalizeServerRecordTimestamps(normalizedServerRecord),
+                _syncStatus: 'synced',
+                _lastModified: nowISO(),
+                _version: (localRecord._version || 0) + 1,
+                _deleted: false
+              });
+              updatedCount++;
+              this.syncMetrics.successfulOperations++;
+            }
           }
+        } catch (err) {
+          console.error(`Error processing record ${serverRecord.id}:`, err);
+          ignoredCount++;
         }
-      } catch (error) {
-        console.error(`Error processing server record ${serverRecord.id} in ${tableName}:`, error);
-        this.syncMetrics.failedOperations++;
+      }
+
+      // Yield to the event loop after each chunk to allow UI updates
+      if (i + CHUNK_SIZE < total) {
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
-    // Update last sync time
+    console.log(`SyncManager: Finished processing ${tableName}. Added: ${addedCount}, Updated: ${updatedCount}, Ignored: ${ignoredCount}`);
+
+    // Final completion event
+    this.emit({
+      type: 'sync_complete',
+      table: tableName
+    } as any);
+
+    // Update last sync time ONLY after successful processing
     await this.setLastSyncTime(tableName, nowISO());
   }
-
   /**
    * Get last sync time for a table
    */
@@ -1600,17 +1737,31 @@ export class SyncManager {
     // Fetch updated records from server with optional limit
     console.log(`SyncManager: Pulling ${tableName} from server. MasterID: ${this.masterUserId}, LastSync: ${lastSync}`);
 
-    let query = supabase
-      .from(supabaseTable)
-      .select('*')
-      .eq('master_user_id', this.masterUserId)
-      .gte(timestampField, lastSync);
+    let serverRecords: any[] | null = null;
+    let error: any = null;
 
-    if (recordLimit) {
-      query = query.limit(recordLimit);
+    if (tableName === 'contacts') {
+      // For contacts, we ALWAYS use RPC to bypass limits and ensure full sync
+      // Partial sync for contacts doesn't make sense if we want consistency
+      console.log('SyncManager: pullTableFromServerWithLimit - Upgrading to RPC for contacts');
+      const result = await supabase.rpc('sync_pull_contacts', { p_master_user_id: this.masterUserId });
+      serverRecords = result.data;
+      error = result.error;
+    } else {
+      let query = supabase
+        .from(supabaseTable)
+        .select('*')
+        .eq('master_user_id', this.masterUserId)
+        .gte(timestampField, lastSync);
+
+      if (recordLimit) {
+        query = query.limit(recordLimit);
+      }
+
+      const result = await query;
+      serverRecords = result.data;
+      error = result.error;
     }
-
-    const { data: serverRecords, error } = await query;
 
     if (error) {
       console.error(`SyncManager: Error pulling ${tableName}:`, error);
@@ -1770,11 +1921,23 @@ export class SyncManager {
     // Fetch records from server that haven't been synced yet
     console.log(`SyncManager: pullRemainingRecords - Pulling ${tableName} from server. MasterID: ${this.masterUserId}, LastSync: ${lastSync}`);
 
-    const { data: serverRecords, error } = await supabase
-      .from(supabaseTable)
-      .select('*')
-      .eq('master_user_id', this.masterUserId)
-      .gte(timestampField, lastSync);
+    let serverRecords: any[] | null = null;
+    let error: any = null;
+
+    if (tableName === 'contacts') {
+      console.log('SyncManager: pullRemainingRecords - Upgrading to RPC for contacts');
+      const result = await supabase.rpc('sync_pull_contacts', { p_master_user_id: this.masterUserId });
+      serverRecords = result.data;
+      error = result.error;
+    } else {
+      const result = await supabase
+        .from(supabaseTable)
+        .select('*')
+        .eq('master_user_id', this.masterUserId)
+        .gte(timestampField, lastSync);
+      serverRecords = result.data;
+      error = result.error;
+    }
 
     if (error) {
       console.error(`SyncManager: pullRemainingRecords - Error pulling ${tableName}:`, error);

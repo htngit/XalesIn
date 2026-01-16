@@ -178,7 +178,10 @@ export class AssetService {
 
       console.log('AssetService: No local assets found, triggering sync to fetch from server...');
       // No local data, try to sync from server
-      await this.syncManager.triggerSync();
+      // await this.syncManager.triggerSync(); -> Removed blocking sync. InitialSyncOrchestrator handles this.
+      if (this.syncManager.getIsOnline()) {
+        console.log('AssetService: Waiting for InitialSyncOrchestrator to complete instead of triggering blocking sync');
+      }
       console.log('AssetService: Sync completed, fetching assets from local DB again...');
 
       // Try local again after sync
@@ -362,9 +365,8 @@ export class AssetService {
   async backgroundSyncAssets(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
+      // Initial sync is now handled by InitialSyncOrchestrator
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }

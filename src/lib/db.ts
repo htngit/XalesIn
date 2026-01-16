@@ -519,8 +519,7 @@ export class AppDatabase extends Dexie {
       'profiles',
       'payments',
       'userSessions',     // maps to 'user_sessions' table
-      'teams',            // maps to 'teams' table
-      'messages'          // maps to 'messages' table
+      'teams'            // maps to 'teams' table
     ];
   }
 

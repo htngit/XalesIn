@@ -55,7 +55,9 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
-  MapPin
+  MapPin,
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
 
 // Placeholder content component for when data is loaded
@@ -140,14 +142,41 @@ function ContactsPageContent({
                       <Settings className="h-4 w-4 mr-2" />
                       {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
                     </AnimatedButton>
-                    <AnimatedButton animation="scale" onClick={onUploadClick}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      {intl.formatMessage({ id: 'contacts.button.upload', defaultMessage: 'Upload Contacts' })}
+
+                    {/* Sync from Server Button */}
+                    <AnimatedButton
+                      animation="scale"
+                      variant="outline"
+                      onClick={onRefresh}
+                      disabled={isLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                      {isLoading
+                        ? intl.formatMessage({ id: 'contacts.button.syncing', defaultMessage: 'Syncing...' })
+                        : intl.formatMessage({ id: 'contacts.button.sync_server', defaultMessage: 'Sync from Server' })
+                      }
                     </AnimatedButton>
-                    <AnimatedButton animation="scale" onClick={handleAddContact}>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      {intl.formatMessage({ id: 'contacts.button.add', defaultMessage: 'Add Contact' })}
-                    </AnimatedButton>
+
+                    {/* Consolidated Add/Import Button */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <AnimatedButton animation="scale">
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.add', defaultMessage: 'Add Contact' })}
+                          <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                        </AnimatedButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleAddContact}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.add_individual', defaultMessage: 'Add Individual' })}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onUploadClick}>
+                          <Upload className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.upload', defaultMessage: 'Upload Contacts' })}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 )}
               </div>
@@ -600,13 +629,19 @@ export function ContactsPage() {
     setShowBulkDeleteDialog(false);
   };
 
-  const loadData = async () => {
+  const loadData = async (forceSync = false) => {
     try {
       setIsLoading(true);
       setError(null);
 
+      // Force sync from server before loading local data
+      if (forceSync) {
+        console.log('Force syncing contacts from server...');
+        await contactService.forceSync();
+      }
+
       const [contactsData, groupsData] = await Promise.all([
-        contactService.getContacts(), // Fetches fresh data from Dexie
+        contactService.getContacts(), // Fetches fresh data from Dexie (now updated by sync)
         groupService.getGroups()
       ]);
       setContacts(contactsData);
@@ -714,7 +749,7 @@ export function ContactsPage() {
         stats={stats}
         isLoading={isLoading}
         onUploadClick={() => setShowUploadDialog(true)}
-        onRefresh={loadData}
+        onRefresh={() => loadData(true)}
         paginationComponent={
           <ContactsPagination
             totalItems={filteredContacts.length}

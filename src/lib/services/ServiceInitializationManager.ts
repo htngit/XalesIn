@@ -301,6 +301,12 @@ export class ServiceInitializationManager {
     // MessageService does not have an initialize method yet, or if it does, call it here.
     // Based on previous code, it only needs constructor. 
   }
+  public getSyncManager(): SyncManager {
+    if (!this.syncManager) {
+      throw new Error('SyncManager not initialized. Call initializeAllServices first.');
+    }
+    return this.syncManager;
+  }
 }
 
 // Export a single instance for global use
