@@ -21,6 +21,8 @@ export class MessageService {
     private syncManager: SyncManager;
     private masterUserId: string | null = null;
     private localListeners: ((message: Message) => void)[] = [];
+    // Mutex: Track message IDs currently being processed to prevent race conditions
+    private processingMessageIds: Set<string> = new Set();
 
     constructor(syncManager?: SyncManager) {
         this.syncManager = syncManager || new SyncManager();
@@ -315,61 +317,73 @@ export class MessageService {
             return null;
         }
 
-        // Check for duplicate by whatsapp_message_id
-        const existing = await db.messages
-            .where('whatsapp_message_id')
-            .equals(data.id)
-            .first();
-
-        if (existing) {
-            console.log('[MessageService] Message already exists:', data.id);
-            return this.transformLocalMessages([existing])[0];
+        // Mutex: Prevent concurrent processing of the same message ID
+        if (this.processingMessageIds.has(data.id)) {
+            console.log('[MessageService] Message already being processed (Mutex):', data.id);
+            return null;
         }
+        this.processingMessageIds.add(data.id);
 
-        // Determine if outbound (sent from phone) or inbound
-        const isOutbound = data.fromMe || false;
+        try {
+            // Check for duplicate by whatsapp_message_id in DB
+            const existing = await db.messages
+                .where('whatsapp_message_id')
+                .equals(data.id)
+                .first();
 
-        // Use 'to' as contact phone if outbound, 'from' if inbound
-        const rawPhone = isOutbound ? data.to : data.from;
-        // Strip WhatsApp JID suffixes: @s.whatsapp.net, @c.us, etc.
-        let normalizedPhone = rawPhone
-            .replace('@s.whatsapp.net', '')
-            .replace('@c.us', '')
-            .replace(/[^\d]/g, '');
-        if (normalizedPhone.startsWith('0')) {
-            normalizedPhone = '62' + normalizedPhone.slice(1);
+            if (existing) {
+                console.log('[MessageService] Message already exists in DB:', data.id);
+                return this.transformLocalMessages([existing])[0];
+            }
+
+            // Determine if outbound (sent from phone) or inbound
+            const isOutbound = data.fromMe || false;
+
+            // Use 'to' as contact phone if outbound, 'from' if inbound
+            const rawPhone = isOutbound ? data.to : data.from;
+            // Strip WhatsApp JID suffixes: @s.whatsapp.net, @c.us, etc.
+            let normalizedPhone = rawPhone
+                .replace('@s.whatsapp.net', '')
+                .replace('@c.us', '')
+                .replace(/[^\d]/g, '');
+            if (normalizedPhone.startsWith('0')) {
+                normalizedPhone = '62' + normalizedPhone.slice(1);
+            }
+
+            // Try to find contact by phone
+            const masterUserId = await this.getMasterUserId();
+
+            let contactId: string | undefined;
+            let contactName: string | undefined;
+
+            const contact = await db.contacts
+                .where('master_user_id')
+                .equals(masterUserId)
+                .and(c => !c._deleted && c.phone.replace(/[^\d]/g, '') === normalizedPhone)
+                .first();
+
+            if (contact) {
+                contactId = contact.id;
+                contactName = contact.name;
+            }
+
+            return this.createMessage({
+                contact_id: contactId,
+                contact_phone: normalizedPhone,
+                contact_name: contactName,
+                direction: isOutbound ? 'outbound' : 'inbound',
+                content: data.body,
+                message_type: data.type,
+                has_media: data.hasMedia,
+                media_url: data.mediaUrl,
+                status: isOutbound ? 'sent' : 'received',
+                whatsapp_message_id: data.id,
+                sent_at: toISOString(new Date(data.timestamp * 1000))
+            });
+        } finally {
+            // Always release the mutex
+            this.processingMessageIds.delete(data.id);
         }
-
-        // Try to find contact by phone
-        const masterUserId = await this.getMasterUserId();
-
-        let contactId: string | undefined;
-        let contactName: string | undefined;
-
-        const contact = await db.contacts
-            .where('master_user_id')
-            .equals(masterUserId)
-            .and(c => !c._deleted && c.phone.replace(/[^\d]/g, '') === normalizedPhone)
-            .first();
-
-        if (contact) {
-            contactId = contact.id;
-            contactName = contact.name;
-        }
-
-        return this.createMessage({
-            contact_id: contactId,
-            contact_phone: normalizedPhone,
-            contact_name: contactName,
-            direction: isOutbound ? 'outbound' : 'inbound',
-            content: data.body,
-            message_type: data.type,
-            has_media: data.hasMedia,
-            media_url: data.mediaUrl,
-            status: isOutbound ? 'sent' : 'received',
-            whatsapp_message_id: data.id,
-            sent_at: toISOString(new Date(data.timestamp * 1000))
-        });
     }
 
     /**

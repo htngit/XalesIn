@@ -92,19 +92,47 @@ export class GroupService {
 
     const user = await this.getCurrentUser();
 
-    // Get user's profile to find master_user_id
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('master_user_id')
-      .eq('id', user.id)
-      .single();
+    try {
+      // 1. Try to get from local database first (Offline-first)
+      const localProfile = await db.profiles.get(user.id);
+      if (localProfile && localProfile.master_user_id) {
+        this.masterUserId = localProfile.master_user_id;
+        return this.masterUserId;
+      }
 
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      return user.id; // Fallback to current user ID
+      // 2. If not found locally, try Supabase
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('master_user_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        // Only log warning, as this is expected in offline mode if profile not synced yet
+        console.warn('Could not fetch user profile from Supabase:', error);
+
+        // Final fallback: check local DB again in case of race condition or just use user.id
+        // But preferring user.id as fallback for safety if we really can't find anything
+        return user.id;
+      }
+
+      if (profile) {
+        this.masterUserId = profile.master_user_id;
+        // Optimization: Save to local DB to avoid future network calls
+        // We don't await this to avoid blocking
+        /* 
+           Note: We rely on the SyncManager to sync profiles properly.
+           Manually adding here might create conflicts if SyncManager is also working.
+           So we just use the value in memory.
+        */
+        return this.masterUserId!;
+      }
+    } catch (err) {
+      console.error('Error resolving master_user_id:', err);
     }
 
-    this.masterUserId = profile?.master_user_id || user.id;
+    // Default fallback
+    this.masterUserId = user.id;
     return this.masterUserId!;
   }
 
@@ -621,6 +649,61 @@ export class GroupService {
     } catch (error) {
       console.error('Error searching groups:', error);
       throw new Error(handleDatabaseError(error));
+    }
+  }
+
+  /**
+   * RECOVERY TOOL: Find and restore orphaned groups
+   * This fixes the issue where groups created under a fallback master_user_id (e.g. user.id)
+   * disappear when the correct master_user_id (e.g. profile.master_user_id) is enforced.
+   */
+  async recoverOrphanedGroups(): Promise<{ recovered: number; total: number }> {
+    try {
+      const currentUser = await this.getCurrentUser();
+      const currentMasterId = await this.getMasterUserId();
+
+      // unique way to get ALL groups from Dexie regardless of index
+      // We use filter to find groups that are NOT deleted but have WRONG master_user_id
+      // but were likely created by this user
+      const allGroups = await db.groups.toArray();
+
+      const orphanedGroups = allGroups.filter(g =>
+        !g._deleted &&
+        g.master_user_id !== currentMasterId &&
+        (g.created_by === currentUser.id || g.master_user_id === currentUser.id)
+      );
+
+      console.log(`Found ${orphanedGroups.length} orphaned groups out of ${allGroups.length} total`);
+
+      if (orphanedGroups.length === 0) {
+        return { recovered: 0, total: allGroups.length };
+      }
+
+      // Update them to current master_user_id
+      const timestamp = new Date().toISOString();
+      const updates = orphanedGroups.map(g => ({
+        ...g,
+        master_user_id: currentMasterId,
+        updated_at: timestamp,
+        _syncStatus: 'pending', // Mark for sync to server
+        _lastModified: timestamp,
+        _version: (g._version || 0) + 1
+      }));
+
+      await db.groups.bulkPut(updates as any);
+
+      // Add to sync queue
+      for (const g of updates) {
+        // @ts-ignore
+        const syncData = localToSupabase(g);
+        await this.syncManager.addToSyncQueue('groups', 'update', g.id, syncData);
+      }
+
+      return { recovered: orphanedGroups.length, total: allGroups.length };
+
+    } catch (error) {
+      console.error('Error recovering orphaned groups:', error);
+      throw error;
     }
   }
 

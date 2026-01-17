@@ -210,6 +210,13 @@ export class SyncManager {
   }
 
   /**
+   * Get the timestamp of the last successful sync (in-memory metrics)
+   */
+  public getGlobalLastSyncTime(): Date {
+    return this.syncMetrics.lastSyncTime;
+  }
+
+  /**
    * Add event listener for sync events
    */
   addEventListener(listener: SyncEventListener) {
@@ -466,29 +473,25 @@ export class SyncManager {
   }
 
   /**
-   * Start automatic sync with dynamic intervals
+   * Start auto-sync interval (Idle Sync Strategy)
+   * Runs every 15 minutes to reduce server load and UI jitter.
    */
-  /**
-   * Start automatic sync with dynamic intervals
-   */
-  startAutoSync() {
-    // Don't start if initial sync is running - prevent overlap
-    if (this._isInitialSyncInProgress) {
-      console.log('SyncManager: AutoSync delayed - Initial sync in progress');
-      return;
-    }
+  startAutoSync(): void {
+    if (this.syncInterval) return;
+    if (!this.currentConfig.autoSync) return;
 
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-    }
+    console.log('SyncManager: Starting auto-sync (15 minute interval)');
 
-    if (this.currentConfig.autoSync) {
-      this.syncInterval = setInterval(() => {
-        if (this.isOnline && this.masterUserId) {
-          this.sync();
-        }
-      }, this.currentSyncInterval);
-    }
+    // Initial sync on start
+    this.sync().catch(console.error);
+
+    // 15 Minutes = 15 * 60 * 1000 = 900000 ms
+    const SYNC_INTERVAL = 900000;
+
+    this.syncInterval = setInterval(() => {
+      console.log('SyncManager: Executing scheduled idle sync...');
+      this.sync().catch(console.error);
+    }, SYNC_INTERVAL);
   }
 
   /**
@@ -502,7 +505,7 @@ export class SyncManager {
   }
 
   /**
-   * Manually trigger sync
+   * Manually trigger sync and reset idle timer
    */
   async triggerSync(): Promise<void> {
     if (!this.isOnline) {
@@ -514,7 +517,17 @@ export class SyncManager {
       throw new Error('Master user ID not set');
     }
 
-    await this.sync();
+    // Stop existing timer to prevent double sync
+    this.stopAutoSync();
+
+    try {
+      await this.sync();
+    } finally {
+      // Restart timer if auto-sync is enabled
+      if (this.currentConfig.autoSync) {
+        this.startAutoSync();
+      }
+    }
   }
 
   /**

@@ -107,22 +107,45 @@ export class ContactService {
 
     const user = await this.getCurrentUser();
 
-    // Get user's profile to find master_user_id
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('master_user_id')
-      .eq('id', user.id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      if (options.strict) {
-        throw new Error(`Failed to resolve master user ID: ${error.message}`);
+    try {
+      // 1. Try to get from local database first (Offline-first)
+      const localProfile = await db.profiles.get(user.id);
+      if (localProfile && localProfile.master_user_id) {
+        this.masterUserId = localProfile.master_user_id;
+        return this.masterUserId;
       }
-      return user.id; // Fallback to current user ID
+
+      // 2. If not found locally, try Supabase
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('master_user_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        // Only log warning, as this is expected in offline mode if profile not synced yet
+        console.warn('Could not fetch user profile from Supabase:', error);
+
+        if (options.strict) {
+          throw new Error(`Failed to resolve master user ID: ${error.message}`);
+        }
+
+        // Final fallback
+        return user.id;
+      }
+
+      if (profile) {
+        this.masterUserId = profile.master_user_id;
+        return this.masterUserId!;
+      }
+    } catch (err) {
+      console.error('Error resolving master_user_id:', err);
+      if (options.strict) {
+        throw err;
+      }
     }
 
-    this.masterUserId = profile?.master_user_id || user.id;
+    this.masterUserId = user.id;
     return this.masterUserId!;
   }
 
@@ -239,10 +262,21 @@ export class ContactService {
         const enrichedContacts = await this.enrichContactsWithGroups(localContacts);
 
         // If online, trigger background sync to update local data
-        // REMOVED to prevent redundant sync trigger. We rely on AutoSync.
-        // if (isOnline) {
-        //   this.backgroundSyncContacts().catch(console.warn);
-        // }
+        // If online, trigger background sync to update local data
+        // Only trigger if we haven't synced in the last minute (to prevent spamming on navigation)
+        if (isOnline) {
+          const lastSync = this.syncManager.getGlobalLastSyncTime();
+          const timeSinceSync = Date.now() - lastSync.getTime();
+
+          // Sync if never synced (time is 0) or > 60 seconds ago
+          if (lastSync.getTime() === 0 || timeSinceSync > 60000) {
+            console.log('ContactService: Triggering background sync (Debounced)');
+            // We use triggerSync directly from syncManager to ensure correct timer handling
+            this.syncManager.triggerSync().catch(err => {
+              console.warn('Background sync failed:', err);
+            });
+          }
+        }
 
         return enrichedContacts;
       }
@@ -1076,47 +1110,76 @@ export class ContactService {
 
       const isOnline = this.syncManager.getIsOnline();
 
-      // Server-First Update
-      // Server-First Update
+      // Server-First Update with verification
       if (isOnline) {
         try {
-          // Prepare payload
-          const updatePayload = {
+          // Prepare payload for Supabase (sanitize local metadata)
+          // Removing _lastModified, _version, and _syncStatus as they don't exist on server schema
+          const { _lastModified, _version, _syncStatus, ...serverPayload } = {
             ...contactData,
-            updated_at: timestamps.updated_at,
-            _lastModified: syncMetadata._lastModified,
-            _version: syncMetadata._version,
-            _syncStatus: 'synced' // Directly synced
-          };
+            updated_at: timestamps.updated_at
+          } as any;
 
-          // We'll update the 'data' part.
-          const { error } = await supabase
+          // Try update first
+          const { data: updateResult, error: updateError } = await supabase
             .from('contacts')
-            .update(updatePayload)
-            .eq('id', id);
+            .update(serverPayload)
+            .eq('id', id)
+            .select('id')
+            .maybeSingle();
 
-          if (error) throw error;
+          // If update affected 0 rows (contact not on server yet), use upsert
+          if (!updateResult && !updateError) {
+            console.warn(`Contact ${id} not found on server, attempting upsert...`);
 
-          await this.syncManager.triggerSync();
-          const synced = await this.getContactById(id);
-          if (synced) return synced;
+            // Get full local contact for upsert
+            const fullContact = await db.contacts.get(id);
+            if (fullContact) {
+              const { _lastModified: l, _version: v, _syncStatus: s, _deleted: d, ...baseContact } = fullContact as any;
 
-          // If sync didn't update local yet, update local manually as 'synced'
-          if (!existingContact) throw new Error("Contact lost during update");
+              const upsertData = {
+                ...baseContact,
+                ...serverPayload,
+                id: fullContact.id,
+                master_user_id: fullContact.master_user_id,
+                created_by: fullContact.created_by,
+                updated_at: timestamps.updated_at
+              };
 
-          const manualUpdate = {
-            ...existingContact,
-            ...updatePayload,
-            id: existingContact.id, // Explicitly include ID
-            _deleted: existingContact._deleted, // Explicitly preserve deleted status
-            _syncStatus: 'synced' as const
-          };
-          await db.contacts.update(id, manualUpdate);
-          const enriched = await this.enrichContactsWithGroups([manualUpdate]);
-          return enriched[0] || null;
+              const { error: upsertError } = await supabase
+                .from('contacts')
+                .upsert(upsertData, { onConflict: 'id' });
+
+              if (upsertError) {
+                console.error('Upsert failed:', upsertError);
+                throw upsertError;
+              }
+              console.log(`Contact ${id} upserted to server successfully`);
+            }
+          } else if (updateError) {
+            throw updateError;
+          } else {
+            console.log(`Contact ${id} updated on server successfully`);
+          }
+
+          // Update local DB to mark as synced
+          if (existingContact) {
+            const localUpdate = {
+              ...existingContact,
+              ...serverPayload,
+              _lastModified: syncMetadata._lastModified,
+              _version: syncMetadata._version,
+              _syncStatus: 'synced' as const,
+              _deleted: existingContact._deleted
+            };
+            await db.contacts.update(id, localUpdate);
+            const enriched = await this.enrichContactsWithGroups([localUpdate]);
+            return enriched[0] || null;
+          }
 
         } catch (e) {
-          console.error('Server-First Update Failed, falling back:', e);
+          console.error('Server-First Update Failed, falling back to sync queue:', e);
+          // Fall through to local update with sync queue
         }
       }
 

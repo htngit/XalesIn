@@ -30,6 +30,8 @@ export function ChatWindow({ messages, isLoading, onSendMessage, selectedPhone }
     const messagesByDate = React.useMemo(() => {
         // 1. Deduplicate messages
         const seenIds = new Set<string>();
+        // Fallback: Track content + direction + time for edge case deduplication
+        const seenContentKeys = new Set<string>();
         const uniqueMessages: Message[] = [];
 
         // Sort messages strictly by sent_at to ensure consistent ordering
@@ -54,6 +56,18 @@ export function ChatWindow({ messages, isLoading, onSendMessage, selectedPhone }
                 }
                 seenIds.add(message.id);
             }
+
+            // Priority 3: Content + Direction + Time Window (Fallback)
+            // This catches duplicates with mismatched IDs (optimistic vs synced)
+            const msgTime = new Date(message.sent_at).getTime();
+            // Round to 2-second window for matching
+            const timeWindow = Math.floor(msgTime / 2000);
+            const contentKey = `${message.direction}_${timeWindow}_${message.content?.substring(0, 50)}`;
+            if (seenContentKeys.has(contentKey)) {
+                console.log('[ChatWindow] Skipping duplicate by content fallback:', message.id);
+                continue;
+            }
+            seenContentKeys.add(contentKey);
 
             uniqueMessages.push(message);
         }

@@ -96,23 +96,44 @@ export class TemplateService {
 
     const user = await this.getCurrentUser();
 
-    // Get user's profile to find master_user_id
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('master_user_id')
-      .eq('id', user.id)
-      .single();
+    try {
+      // 1. Try to get from local database first (Offline-first)
+      const localProfile = await db.profiles.get(user.id);
+      if (localProfile && localProfile.master_user_id) {
+        this.masterUserId = localProfile.master_user_id;
 
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      return user.id; // Fallback to current user ID
+        // Ensure SyncManager has the masterUserId
+        this.syncManager.setMasterUserId(this.masterUserId);
+
+        return this.masterUserId;
+      }
+
+      // 2. If not found locally, try Supabase
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('master_user_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        // Only log warning, as this is expected in offline mode if profile not synced yet
+        console.warn('Could not fetch user profile from Supabase:', error);
+        return user.id; // Fallback to current user ID
+      }
+
+      if (profile) {
+        this.masterUserId = profile.master_user_id;
+
+        // Ensure SyncManager has the masterUserId
+        this.syncManager.setMasterUserId(this.masterUserId);
+
+        return this.masterUserId!;
+      }
+    } catch (err) {
+      console.error('Error resolving master_user_id:', err);
     }
 
-    this.masterUserId = profile?.master_user_id || user.id;
-
-    // Ensure SyncManager has the masterUserId
-    this.syncManager.setMasterUserId(this.masterUserId);
-
+    this.masterUserId = user.id;
     return this.masterUserId!;
   }
 
