@@ -1033,14 +1033,32 @@ export class ContactService {
       await this.getMasterUserId();
 
       // Check if contact exists locally
-      const existingContact = await db.contacts.get(id);
+      let existingContact = await db.contacts.get(id);
 
       if (!existingContact || existingContact._deleted) {
-        // Contact doesn't exist locally, try server
+        // Contact doesn't exist locally, try server and cache locally
         const serverContact = await this.getContactById(id);
         if (!serverContact) {
           throw new Error('Contact not found');
         }
+        // Use server contact data for the update base
+        existingContact = {
+          id: serverContact.id,
+          master_user_id: serverContact.master_user_id,
+          created_by: serverContact.created_by,
+          name: serverContact.name,
+          phone: serverContact.phone,
+          group_id: serverContact.group_id,
+          tags: serverContact.tags,
+          notes: serverContact.notes,
+          is_blocked: serverContact.is_blocked || false,
+          created_at: serverContact.created_at,
+          updated_at: serverContact.updated_at,
+          _syncStatus: 'synced',
+          _lastModified: new Date().toISOString(),
+          _version: (serverContact as unknown as { _version?: number })._version || 1,
+          _deleted: false
+        } as LocalContact;
       }
 
       // Use standardized timestamp utilities for updates
