@@ -111,6 +111,9 @@ export class ServiceInitializationManager {
     this.initializationPromise = (async () => {
       try {
         // Initialize SyncManager first
+        if (this.syncManager) {
+          this.syncManager.destroy();
+        }
         this.syncManager = new SyncManager();
 
         // Initialize in dependency order

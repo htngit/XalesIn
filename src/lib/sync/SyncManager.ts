@@ -138,6 +138,8 @@ export class SyncManager {
   private retryDelays: Map<string, number> = new Map(); // operationId -> delay
   private syncCache: Map<string, any> = new Map(); // Cache for frequently accessed data
   private compressionCache: Map<string, string> = new Map(); // Compressed data cache
+  private connectionCheckInterval: NodeJS.Timeout | null = null;
+  private activityCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(config?: Partial<SyncConfig>) {
     this.currentConfig = {
@@ -2128,6 +2130,16 @@ export class SyncManager {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+      this.connectionCheckInterval = null;
+    }
+
+    if (this.activityCheckInterval) {
+      clearInterval(this.activityCheckInterval);
+      this.activityCheckInterval = null;
     }
 
     this.eventListeners = [];

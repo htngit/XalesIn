@@ -3,6 +3,7 @@ import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
+import { cn } from '@/lib/utils';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
@@ -27,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog';
-import { Contact, Template, Quota, ContactGroup, AssetFile } from '@/lib/services/types';
+import { Template, Quota, ContactGroup, AssetFile, ContactWithGroup } from '@/lib/services/types';
 import { preflightService } from '@/lib/services/PreflightService';
 import { JobProgressModal } from '@/components/ui/JobProgressModal';
 import { toast } from 'sonner';
@@ -45,8 +46,24 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  ChevronsUpDown,
+  Check,
   X
 } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 const PRESET_DELAYS = [1, 3, 5, 10, 15, 30, 60, 120, 300, 600, 900];
 
@@ -66,8 +83,8 @@ function SendPageContent({
   quota,
   groups,
   assets,
-  selectedGroupId,
-  setSelectedGroupId,
+  selectedGroupIds,
+  setSelectedGroupIds,
   selectedTemplate,
   setSelectedTemplate,
   selectedAssets,
@@ -95,13 +112,13 @@ function SendPageContent({
   spamWarningReasons,
   proceedWithCampaign
 }: {
-  contacts: Contact[];
+  contacts: ContactWithGroup[];
   templates: Template[];
   quota: Quota | null;
   groups: ContactGroup[];
   assets: AssetFile[];
-  selectedGroupId: string;
-  setSelectedGroupId: (id: string) => void;
+  selectedGroupIds: string[];
+  setSelectedGroupIds: (ids: string[]) => void;
   selectedTemplate: string;
   setSelectedTemplate: (id: string) => void;
   selectedAssets: string[];
@@ -110,9 +127,9 @@ function SendPageContent({
   isSending: boolean;
   sendResult: any;
   handleStartCampaign: () => void;
-  targetContacts: Contact[];
+  targetContacts: ContactWithGroup[];
   selectedTemplateData: Template | undefined;
-  selectedGroupData: ContactGroup | { name: string; color: string };
+  selectedGroupData: (ContactGroup | { name: string; color: string })[];
   canSend: boolean;
   previewMessage: () => string;
   getSelectedAssets: () => AssetFile[];
@@ -131,6 +148,9 @@ function SendPageContent({
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
+  const selectedGroupsData = selectedGroupIds.includes('all')
+    ? []
+    : groups.filter(g => selectedGroupIds.includes(g.id));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -159,8 +179,7 @@ function SendPageContent({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Configuration Panel */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Target Group Selection */}
-              <AnimatedCard animation="slideUp" delay={0.1} className="min-h-[250px]">
+              <AnimatedCard animation="slideUp" delay={0.1} className="min-h-[250px] overflow-visible">
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Target className="h-5 w-5" />
@@ -171,40 +190,123 @@ function SendPageContent({
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="group-select">{intl.formatMessage({ id: 'send.config.target.label', defaultMessage: 'Contact Group' })}</Label>
-                      <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={intl.formatMessage({ id: 'send.config.target.placeholder', defaultMessage: 'Select contact group' })} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })} ({contacts.length})</SelectItem>
-                          {groups.map((group) => (
-                            <SelectItem key={group.id} value={group.id}>
-                              <div className="flex items-center space-x-2">
-                                <div
-                                  className="w-3 h-3 rounded-full border"
-                                  style={{ backgroundColor: group.color }}
-                                />
-                                <span>{group.name} ({contacts.filter(c => c.group_id === group.id).length})</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="mb-2 block">{intl.formatMessage({ id: 'send.config.target.label', defaultMessage: 'Contact Group' })}</Label>
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between h-auto min-h-[40px] py-2"
+                          >
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {selectedGroupIds.includes('all') ? (
+                                <span>{intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })} ({contacts.length})</span>
+                              ) : selectedGroupIds.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedGroupIds.length > 3 ? (
+                                    <Badge variant="secondary" className="mr-1">
+                                      {selectedGroupIds.length} groups selected
+                                    </Badge>
+                                  ) : (
+                                    groups
+                                      .filter(g => selectedGroupIds.includes(g.id))
+                                      .map(g => (
+                                        <Badge
+                                          key={g.id}
+                                          variant="secondary"
+                                          className="mr-1 mb-1"
+                                          style={{ borderLeft: `3px solid ${g.color || '#ccc'}` }}
+                                        >
+                                          {g.name}
+                                        </Badge>
+                                      ))
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">{intl.formatMessage({ id: 'send.config.target.placeholder', defaultMessage: 'Select contact group' })}</span>
+                              )}
+                            </div>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search group..." />
+                            <CommandList>
+                              <CommandEmpty>No group found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="all"
+                                  onSelect={() => setSelectedGroupIds(['all'])}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedGroupIds.includes('all') ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })}
+                                  <span className="ml-auto text-muted-foreground text-xs">
+                                    {contacts.length}
+                                  </span>
+                                </CommandItem>
+                              </CommandGroup>
+                              <CommandSeparator />
+                              <CommandGroup>
+                                {groups.map((group) => (
+                                  <CommandItem
+                                    key={group.id}
+                                    value={group.name}
+                                    onSelect={() => {
+                                      if (selectedGroupIds.includes('all')) {
+                                        // If 'all' was selected, replace with this new selection
+                                        setSelectedGroupIds([group.id]);
+                                      } else {
+                                        if (selectedGroupIds.includes(group.id)) {
+                                          // Deselect
+                                          const newIds = selectedGroupIds.filter(id => id !== group.id);
+                                          setSelectedGroupIds(newIds.length === 0 ? ['all'] : newIds);
+                                        } else {
+                                          // Select
+                                          setSelectedGroupIds([...selectedGroupIds, group.id]);
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedGroupIds.includes(group.id) ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex items-center">
+                                      <div
+                                        className="w-3 h-3 rounded-full border mr-2"
+                                        style={{ backgroundColor: group.color }}
+                                      />
+                                      <span>{group.name}</span>
+                                    </div>
+                                    <span className="ml-auto text-muted-foreground text-xs">
+                                      {contacts.filter(c => c.groups && c.groups.id === group.id).length}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
-                    <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">{intl.formatMessage({ id: 'send.config.target.summary', defaultMessage: 'Target Contacts:' })}</span>
                         <Badge variant="secondary">{targetContacts.length}</Badge>
                       </div>
-                      {selectedGroupId !== 'all' && (
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className="w-3 h-3 rounded-full border"
-                            style={{ backgroundColor: selectedGroupData.color }}
-                          />
-                          <span className="text-sm text-blue-700">{selectedGroupData.name}</span>
+                      {!selectedGroupIds.includes('all') && selectedGroupIds.length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Included groups: {selectedGroupsData.map(g => g.name).join(', ')}
                         </div>
                       )}
                     </div>
@@ -427,7 +529,7 @@ function SendPageContent({
                           <p className="font-medium text-yellow-800">{intl.formatMessage({ id: 'send.config.summary.title', defaultMessage: 'Send Configuration Summary:' })}</p>
                           <ul className="text-yellow-700 mt-1 space-y-1">
                             <li>• {intl.formatMessage({ id: 'send.config.summary.target', defaultMessage: 'Target: {count} contacts' }, { count: targetContacts.length })}</li>
-                            <li>• {intl.formatMessage({ id: 'send.config.summary.group', defaultMessage: 'Group: {name}' }, { name: selectedGroupData.name })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.group', defaultMessage: 'Group: {name}' }, { name: selectedGroupIds.includes('all') ? 'All Contacts' : selectedGroupData.map(g => g.name).join(', ') })}</li>
                             <li>• {intl.formatMessage({ id: 'send.config.summary.template', defaultMessage: 'Template: {name}' }, { name: selectedTemplateData?.name || 'Not selected' })}</li>
                             {selectedAssets.length > 0 && (
                               <li>• {intl.formatMessage({ id: 'send.config.summary.assets', defaultMessage: 'Assets: {count} file(s) attached' }, { count: selectedAssets.length })}</li>
@@ -570,7 +672,9 @@ function SendPageContent({
                         </div>
                         <div className="text-xs text-muted-foreground mt-3">
                           <div>Template: {sendResult.templateName}</div>
-                          <div>Group: {sendResult.groupName}</div>
+                          <div>Group: {selectedGroupIds.includes('all')
+                            ? 'All Contacts'
+                            : groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name).join(', ')}</div>
                           {sendResult.selectedAssets && sendResult.selectedAssets.length > 0 && (
                             <div>Assets: {sendResult.selectedAssets.length} file(s) attached</div>
                           )}
@@ -659,12 +763,12 @@ export function SendPage() {
     isInitialized
   } = useServices();
 
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<ContactWithGroup[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [assets, setAssets] = useState<AssetFile[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(['all']);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   // Default to dynamic range [3, 10]
@@ -741,21 +845,21 @@ export function SendPage() {
   };
 
   const getTargetContacts = () => {
-    if (selectedGroupId === 'all') {
+    if (selectedGroupIds.includes('all')) {
       return contacts;
     }
-    return contacts.filter(contact => contact.group_id === selectedGroupId);
+    return contacts.filter(contact => contact.group_id && selectedGroupIds.includes(contact.group_id));
   };
 
   const getSelectedTemplate = () => {
     return templates.find(t => t.id === selectedTemplate);
   };
 
-  const getSelectedGroup = () => {
-    if (selectedGroupId === 'all') {
-      return { name: 'All Contacts', color: '#6b7280' };
+  const getSelectedGroups = () => {
+    if (selectedGroupIds.includes('all')) {
+      return [{ name: 'All Contacts', color: '#6b7280' }];
     }
-    return groups.find(g => g.id === selectedGroupId) || { name: 'Unknown Group', color: '#6b7280' };
+    return groups.filter(g => selectedGroupIds.includes(g.id));
   };
 
   const getSelectedAssets = () => {
@@ -805,7 +909,6 @@ export function SendPage() {
   const handleStartCampaign = async () => {
     if (!selectedTemplate || !quota) return;
 
-    const targetContacts = getTargetContacts();
     const selectedTemplateData = getSelectedTemplate();
 
     if (!selectedTemplateData) return;
@@ -911,7 +1014,7 @@ export function SendPage() {
         reservation_id: reserveResult.reservation_id,
         user_id: currentUserId,
         master_user_id: currentUserId,
-        contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+        contact_group_id: (selectedGroupIds.length === 1 && !selectedGroupIds.includes('all')) ? selectedGroupIds[0] : undefined,
         template_id: selectedTemplate,
         total_contacts: targetContacts.length,
         success_count: 0,
@@ -1038,7 +1141,7 @@ export function SendPage() {
           const createdLog = await historyService.createLog({
             user_id: currentUserId,
             master_user_id: currentUserId,
-            contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+            contact_group_id: (selectedGroupIds.length === 1 && !selectedGroupIds.includes('all')) ? selectedGroupIds[0] : undefined,
             template_id: selectedTemplate,
             template_name: selectedTemplateData?.name || 'Unknown Template',
             total_contacts: data.total,
@@ -1103,7 +1206,7 @@ export function SendPage() {
             successCount: data.success,
             failedCount: data.failed,
             templateName: selectedTemplateData?.name,
-            groupName: selectedGroupData.name,
+            groupName: selectedGroupIds.includes('all') ? 'All Contacts' : getSelectedGroups().map(g => g.name).join(', '),
             selectedAssets: getSelectedAssets(),
             delayRange: `${delayRange[0]}-${delayRange[1]}`,
             reservationId: reservationId
@@ -1119,7 +1222,7 @@ export function SendPage() {
     return () => {
       unsubscribe();
     };
-  }, [activeJobId, reservationId, quota, delayRange, selectedGroupId, selectedTemplate]);
+  }, [activeJobId, reservationId, quota, delayRange, selectedGroupIds, selectedTemplate]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -1129,7 +1232,7 @@ export function SendPage() {
 
   const targetContacts = getTargetContacts();
   const selectedTemplateData = getSelectedTemplate();
-  const selectedGroupData = getSelectedGroup();
+  const selectedGroupData = getSelectedGroups();
   const canSend = !!(selectedTemplate && targetContacts.length > 0 && quota && quota.remaining >= targetContacts.length);
 
   if (isLoading) {
@@ -1147,8 +1250,8 @@ export function SendPage() {
       quota={quota}
       groups={groups}
       assets={assets}
-      selectedGroupId={selectedGroupId}
-      setSelectedGroupId={setSelectedGroupId}
+      selectedGroupIds={selectedGroupIds}
+      setSelectedGroupIds={setSelectedGroupIds}
       selectedTemplate={selectedTemplate}
       setSelectedTemplate={setSelectedTemplate}
       selectedAssets={selectedAssets}
