@@ -1115,10 +1115,16 @@ export class ContactService {
         try {
           // Prepare payload for Supabase (sanitize local metadata)
           // Removing _lastModified, _version, and _syncStatus as they don't exist on server schema
-          const { _lastModified, _version, _syncStatus, ...serverPayload } = {
+          const { _lastModified, _version, _syncStatus, ...rawPayload } = {
             ...contactData,
             updated_at: timestamps.updated_at
           } as any;
+
+          // Convert undefined to null for Supabase (undefined is ignored in UPDATE)
+          const serverPayload: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(rawPayload)) {
+            serverPayload[key] = value === undefined ? null : value;
+          }
 
           // Try update first
           const { data: updateResult, error: updateError } = await supabase

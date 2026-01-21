@@ -267,10 +267,11 @@ export function InboxPage() {
                 throw new Error(result.error || 'Failed to send message');
             }
 
-            // 2. Save and Refresh handled by onMessageReceived listener
-            // The listener picks up the 'messages.upsert' event (type: notify) from the backend
-            // even for outbound messages (fromMe: true).
-            // This prevents duplicate bubbles and ensures single source of truth.
+            // 2. Wait a bit for the message to be saved by async listener
+            // Then refresh messages and conversation list
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await loadMessages(selectedConversation.contact_phone);
+            await loadConversations();
 
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -373,8 +374,9 @@ export function InboxPage() {
 
         if (existingConversation) {
             setSelectedConversation(existingConversation);
+            loadMessages(existingConversation.contact_phone);
         } else {
-            // Create temporary conversation object
+            // Create temporary conversation object for new chat
             const newConversation: ConversationSummary = {
                 contact_phone: contact.phone,
                 contact_name: contact.name,
@@ -386,6 +388,9 @@ export function InboxPage() {
                 last_activity: new Date().toISOString()
             };
             setSelectedConversation(newConversation);
+            // Clear old messages and load new contact's messages (likely empty for new chat)
+            setMessages([]);
+            loadMessages(contact.phone);
         }
         setIsNewChatOpen(false);
     };

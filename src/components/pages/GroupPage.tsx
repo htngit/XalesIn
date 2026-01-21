@@ -324,13 +324,21 @@ export function GroupPage() {
 
   const handleRemoveContactFromGroup = async (contactId: string) => {
     try {
-      // Set group_id to default group
-      await contactService.updateContact(contactId, { group_id: 'group_regular' });
+      console.log('[GroupPage] Removing contact from group:', contactId);
+
+      // Set group_id to default group (undefined = no group)
+      const result = await contactService.updateContact(contactId, { group_id: undefined });
+      console.log('[GroupPage] updateContact result:', result);
 
       // Update local state
-      setContacts(prev => prev.map(contact =>
-        contact.id === contactId ? { ...contact, group_id: 'group_regular' } : contact
-      ));
+      setContacts(prev => {
+        const updated = prev.map(contact =>
+          contact.id === contactId ? { ...contact, group_id: undefined } : contact
+        );
+        console.log('[GroupPage] Local state updated. Contact now has group_id:',
+          updated.find(c => c.id === contactId)?.group_id);
+        return updated;
+      });
 
       toast({
         title: "Success",

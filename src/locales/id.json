@@ -489,5 +489,15 @@
     "payment.history.order_id": "ID Pesanan: {id}",
     "payment.notification.initiated": "Pembayaran dimulai! Silakan selesaikan pembayaran di jendela baru.",
     "payment.notification.url_error": "URL pembayaran tidak tersedia. Silakan coba lagi.",
-    "payment.notification.failed": "Pembayaran gagal: {error}"
+    "payment.notification.failed": "Pembayaran gagal: {error}",
+    "send.spam.delay_warning": "Delay minimum {delay} detik terlalu rendah. Disarankan minimal 10 detik untuk menghindari deteksi spam.",
+    "send.spam.volume_warning": "Anda sudah mengirim ke {count} kontak dalam 30 menit terakhir. Ini berisiko terdeteksi sebagai spam.",
+    "send.spam.warning.title": "Peringatan Risiko Spam",
+    "send.spam.warning.desc": "Pengaturan pengiriman Anda berisiko terdeteksi sebagai spam oleh WhatsApp:",
+    "send.spam.warning.risk": "Risiko:",
+    "send.spam.risk.ban": "Akun WhatsApp bisa di-ban sementara atau permanen",
+    "send.spam.risk.spam": "Pesan tidak terkirim atau masuk ke folder spam",
+    "send.spam.risk.reputation": "Reputasi nomor telepon Anda bisa menurun",
+    "send.spam.button.cancel": "Batalkan & Ubah Pengaturan",
+    "send.spam.button.proceed": "Lanjutkan dengan Risiko"
 }

@@ -504,5 +504,15 @@
   "payment.history.order_id": "Order ID: {id}",
   "payment.notification.initiated": "Payment initiated! Please complete the payment in the new window.",
   "payment.notification.url_error": "Payment URL not available. Please try again.",
-  "payment.notification.failed": "Payment failed: {error}"
+  "payment.notification.failed": "Payment failed: {error}",
+  "send.spam.delay_warning": "Minimum delay of {delay} seconds is too low. Recommended minimum is 10 seconds to avoid spam detection.",
+  "send.spam.volume_warning": "You have sent to {count} contacts in the last 30 minutes. This risks being detected as spam.",
+  "send.spam.warning.title": "Spam Risk Warning",
+  "send.spam.warning.desc": "Your sending configuration risks being detected as spam by WhatsApp:",
+  "send.spam.warning.risk": "Risks:",
+  "send.spam.risk.ban": "WhatsApp account could be temporarily or permanently banned",
+  "send.spam.risk.spam": "Messages may not be delivered or go to spam folder",
+  "send.spam.risk.reputation": "Your phone number reputation may decrease",
+  "send.spam.button.cancel": "Cancel & Change Settings",
+  "send.spam.button.proceed": "Proceed with Risk"
 }
