@@ -34,7 +34,8 @@ import {
   Phone,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 50;
@@ -316,6 +317,31 @@ export function GroupPage() {
       toast({
         title: "Error",
         description: "Failed to assign contacts to group",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRemoveContactFromGroup = async (contactId: string) => {
+    try {
+      // Set group_id to default group
+      await contactService.updateContact(contactId, { group_id: 'group_regular' });
+
+      // Update local state
+      setContacts(prev => prev.map(contact =>
+        contact.id === contactId ? { ...contact, group_id: 'group_regular' } : contact
+      ));
+
+      toast({
+        title: "Success",
+        description: "Contact removed from group",
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Failed to remove contact from group:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove contact from group",
         variant: "destructive"
       });
     }
@@ -695,8 +721,15 @@ export function GroupPage() {
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {getGroupContacts(selectedGroup.id).map((contact) => (
-                          <Badge key={contact.id} variant="outline" className="text-xs">
+                          <Badge key={contact.id} variant="outline" className="text-xs flex items-center gap-1 pr-1">
                             {contact.name}
+                            <button
+                              onClick={() => handleRemoveContactFromGroup(contact.id)}
+                              className="ml-1 rounded-full hover:bg-destructive/20 p-0.5 transition-colors"
+                              title="Remove from group"
+                            >
+                              <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                            </button>
                           </Badge>
                         ))}
                       </div>
@@ -816,10 +849,15 @@ export function GroupPage() {
                 Cancel
               </Button>
               <Button
-                onClick={() => selectedGroup && handleAssignContactsToGroup(selectedGroup.id, selectedContacts)}
-                disabled={selectedContacts.length === 0}
+                onClick={() => {
+                  if (selectedGroup && selectedContacts.length > 0) {
+                    handleAssignContactsToGroup(selectedGroup.id, selectedContacts);
+                  } else {
+                    setIsManageContactsDialogOpen(false);
+                  }
+                }}
               >
-                Assign {selectedContacts.length} Contact(s) to Group
+                {selectedContacts.length > 0 ? `Assign ${selectedContacts.length} Contact(s) to Group` : 'Save & Close'}
               </Button>
             </DialogFooter>
           </DialogContent>

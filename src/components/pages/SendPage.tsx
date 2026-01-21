@@ -17,6 +17,16 @@ import { CardContent, CardDescription, CardHeader, CardTitle } from '@/component
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { FadeIn } from '@/components/ui/animations';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 import { Contact, Template, Quota, ContactGroup, AssetFile } from '@/lib/services/types';
 import { preflightService } from '@/lib/services/PreflightService';
 import { JobProgressModal } from '@/components/ui/JobProgressModal';
@@ -79,7 +89,11 @@ function SendPageContent({
   setShowProgressModal,
   activeJobId,
   flowState,
-  validationErrors
+  validationErrors,
+  showSpamWarning,
+  setShowSpamWarning,
+  spamWarningReasons,
+  proceedWithCampaign
 }: {
   contacts: Contact[];
   templates: Template[];
@@ -110,6 +124,10 @@ function SendPageContent({
   activeJobId: string | null;
   flowState: SendFlowState;
   validationErrors: string[];
+  showSpamWarning: boolean;
+  setShowSpamWarning: (show: boolean) => void;
+  spamWarningReasons: string[];
+  proceedWithCampaign: () => void;
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
@@ -583,6 +601,48 @@ function SendPageContent({
           onClose={() => setShowProgressModal(false)}
         />
       )}
+
+      {/* Spam Warning Modal */}
+      <AlertDialog open={showSpamWarning} onOpenChange={setShowSpamWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              {intl.formatMessage({ id: 'send.spam.warning.title', defaultMessage: 'Peringatan Risiko Spam' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{intl.formatMessage({ id: 'send.spam.warning.desc', defaultMessage: 'Pengaturan pengiriman Anda berisiko terdeteksi sebagai spam oleh WhatsApp:' })}</p>
+                <ul className="list-disc pl-4 space-y-1 text-sm">
+                  {spamWarningReasons.map((reason, idx) => (
+                    <li key={idx} className="text-destructive">{reason}</li>
+                  ))}
+                </ul>
+                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-sm">
+                  <p className="font-medium text-yellow-800">{intl.formatMessage({ id: 'send.spam.warning.risk', defaultMessage: 'Risiko:' })}</p>
+                  <ul className="text-yellow-700 mt-1 space-y-1">
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.ban', defaultMessage: 'Akun WhatsApp bisa di-ban sementara atau permanen' })}</li>
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.spam', defaultMessage: 'Pesan tidak terkirim atau masuk ke folder spam' })}</li>
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.reputation', defaultMessage: 'Reputasi nomor telepon Anda menurun' })}</li>
+                  </ul>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{intl.formatMessage({ id: 'send.spam.button.cancel', defaultMessage: 'Batalkan & Ubah Pengaturan' })}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowSpamWarning(false);
+                proceedWithCampaign();
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {intl.formatMessage({ id: 'send.spam.button.proceed', defaultMessage: 'Lanjutkan dengan Risiko' })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -620,6 +680,10 @@ export function SendPage() {
   // New State Machine
   const [flowState, setFlowState] = useState<SendFlowState>('idle');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Spam Warning Modal State
+  const [showSpamWarning, setShowSpamWarning] = useState(false);
+  const [spamWarningReasons, setSpamWarningReasons] = useState<string[]>([]);
 
   const intl = useIntl();
 
@@ -723,7 +787,60 @@ export function SendPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // Check recent send volume in last 30 minutes
+  const checkRecentSendVolume = async (): Promise<number> => {
+    try {
+      const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+      const recentLogs = await historyService.getLogsByDateRange(thirtyMinsAgo, now);
+
+      // Sum up total contacts sent in last 30 mins
+      return recentLogs.reduce((sum, log) => sum + (log.total_contacts || 0), 0);
+    } catch (error) {
+      console.error('Failed to check recent send volume:', error);
+      return 0;
+    }
+  };
+
   const handleStartCampaign = async () => {
+    if (!selectedTemplate || !quota) return;
+
+    const targetContacts = getTargetContacts();
+    const selectedTemplateData = getSelectedTemplate();
+
+    if (!selectedTemplateData) return;
+
+    // --- SPAM RISK CHECK ---
+    const warnings: string[] = [];
+
+    // Check 1: Delay too low (< 10 seconds)
+    if (delayRange[0] < 10) {
+      warnings.push(intl.formatMessage(
+        { id: 'send.spam.delay_warning', defaultMessage: 'Delay minimum {delay} detik terlalu rendah. Disarankan minimal 10 detik untuk menghindari deteksi spam.' },
+        { delay: delayRange[0] }
+      ));
+    }
+
+    // Check 2: Recent volume too high (>= 100 in last 30 mins)
+    const recentVolume = await checkRecentSendVolume();
+    if (recentVolume >= 100) {
+      warnings.push(intl.formatMessage(
+        { id: 'send.spam.volume_warning', defaultMessage: 'Anda sudah mengirim ke {count} kontak dalam 30 menit terakhir. Ini berisiko terdeteksi sebagai spam.' },
+        { count: recentVolume }
+      ));
+    }
+
+    if (warnings.length > 0) {
+      setSpamWarningReasons(warnings);
+      setShowSpamWarning(true);
+      return; // Stop here, wait for user confirmation
+    }
+
+    // No warnings, proceed directly
+    await proceedWithCampaign();
+  };
+
+  const proceedWithCampaign = async () => {
     if (!selectedTemplate || !quota) return;
 
     const targetContacts = getTargetContacts();
@@ -1054,6 +1171,10 @@ export function SendPage() {
       activeJobId={activeJobId}
       flowState={flowState}
       validationErrors={validationErrors}
+      showSpamWarning={showSpamWarning}
+      setShowSpamWarning={setShowSpamWarning}
+      spamWarningReasons={spamWarningReasons}
+      proceedWithCampaign={proceedWithCampaign}
     />
   );
 }
