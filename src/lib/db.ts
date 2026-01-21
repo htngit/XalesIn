@@ -242,7 +242,7 @@ export class AppDatabase extends Dexie {
   messages!: Table<LocalMessage>;
 
   constructor() {
-    super('XenderInDatabase');
+    super('XalesInDatabase');
 
     // Version 1 - Original schema
     this.version(1).stores({

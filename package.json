@@ -1,8 +1,8 @@
 {
-  "name": "xender-in-whatsapp-automation",
+  "name": "xalesin-whatsapp-automation",
   "version": "0.5.7",
-  "description": "Professional WhatsApp Automation and Messaging Solution",
-  "author": "Xalesin Group",
+  "description": "Professional XalesIn WhatsApp Automation and Messaging Solution",
+  "author": "XalesIn Group",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {

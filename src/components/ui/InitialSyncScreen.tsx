@@ -24,7 +24,7 @@ export function InitialSyncScreen({ progress }: InitialSyncScreenProps) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
       <AnimatedCard className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle><FormattedMessage id="sync.initial.title" defaultMessage="Welcome to Xender-In!" /></CardTitle>
+          <CardTitle><FormattedMessage id="sync.initial.title" defaultMessage="Welcome to XalesIn!" /></CardTitle>
           <CardDescription>
             <FormattedMessage id="sync.initial.description" defaultMessage="Setting up your workspace for the first time. This may take a few moments..." />
           </CardDescription>

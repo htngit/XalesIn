@@ -1,6 +1,6 @@
 # 📋 Phase 3: WhatsApp Runtime Integration - Task & Walkthrough
 
-**Project**: Xender-In WhatsApp Automation  
+**Project**: XalesIn WhatsApp Automation  
 **Goal**: Implement the Electron Main Process and WhatsApp Runtime Integration (Bidirectional Messaging)  
 **Reference Documents**: All located in `Plan/` folder.
 

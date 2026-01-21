@@ -3,7 +3,7 @@
 - Prinsip phased development  
 - Rekomendasi UI/UX yang realistis dan performan  
 
-# **Architecture Summary: Local-First WhatsApp Automation App - Xender-In**
+# **Architecture Summary: Local-First WhatsApp Automation App - XalesIn**
 **Version**: 2.2 — Supabase Edge Functions Integration
 **Last Updated**: November 15, 2025
 **Status**: MVP-Ready, Phased Execution Locked
@@ -12,7 +12,7 @@
 
 ## 1. Project Overview
 
-**Xender-In** is a **local-first automation app** using **Electron** and **Supabase**, where WhatsApp automation runs **fully on the user's device** via `whatsapp-web.js` and Puppeteer.
+**XalesIn** is a **local-first automation app** using **Electron** and **Supabase**, where WhatsApp automation runs **fully on the user's device** via `whatsapp-web.js` and Puppeteer.
 Supabase handles **authentication**, **metadata**, **quota control**, **activity logging**, and **payment processing** via Edge Functions — **not runtime execution**.
 
 > 🔑 **Core Principle**:  
@@ -129,14 +129,14 @@ graph TD
 ### 🔒 Per-User Isolation
 All local data scoped by `master_user_id`:
 ```
-%AppData%/Xender-In/{master_user_id}/
+%AppData%/XalesIn/{master_user_id}/
   ├── session/
   ├── dexie-db/
   └── assets/
 ```
 
 ### 🧹 Uninstall Cleanup
-- Windows: `electron-builder` NSIS script hapus seluruh folder Xender-In
+- Windows: `electron-builder` NSIS script hapus seluruh folder XalesIn
 - Pastikan **tidak ada sisa session atau kontak**
 
 ---

@@ -643,7 +643,7 @@ export class WhatsAppManager {
         return new Promise((resolve, reject) => {
             try {
                 const protocol = url.startsWith('https') ? https : http;
-                const tempDir = path.join(app.getPath('temp'), 'xenderin-media');
+                const tempDir = path.join(app.getPath('temp'), 'xalesin-media');
 
                 if (!fs.existsSync(tempDir)) {
                     fs.mkdirSync(tempDir, { recursive: true });

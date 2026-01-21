@@ -1,4 +1,4 @@
-# AI Image Generator Prompts - Xender-In Infographic
+# AI Image Generator Prompts - XalesIn Infographic
 
 ## 🎨 Recommended Style
 **Modern Tech/SaaS with Gradient + Glassmorphism**
@@ -14,14 +14,14 @@
 
 ### Prompt 1A: Hero Infographic - AIDA Focus
 ```
-Create a modern tech infographic hero banner for "Xender-In" WhatsApp automation app. 
+Create a modern tech infographic hero banner for "XalesIn" WhatsApp automation app. 
 
 LAYOUT: Horizontal landscape format (1920x1080px), divided into 3 sections
 
 LEFT SECTION (40%):
 - Large bold headline: "Kirim 500 Pesan WhatsApp dalam 15 Menit"
 - Subheadline: "Local-First WhatsApp Automation"
-- App logo "Xender-In" with WhatsApp icon integration
+- App logo "XalesIn" with WhatsApp icon integration
 - Gradient background: deep purple (#6366F1) to cyan (#06B6D4)
 
 CENTER SECTION (30%):
@@ -127,12 +127,12 @@ STYLE:
 Create a comparison infographic showing Xender-In vs Traditional Method (1080x1350px vertical).
 
 LAYOUT:
-- Title: "Xender-In vs Cara Manual"
+- Title: "XalesIn vs Cara Manual"
 - 2-column table with 5 rows
 
 COLUMNS:
 Left: "Cara Manual" (red/gray theme)
-Right: "Dengan Xender-In" (green/blue theme)
+Right: "Dengan XalesIn" (green/blue theme)
 
 ROWS (with icons):
 1. Time: "8+ jam" vs "15 menit" ⏱️

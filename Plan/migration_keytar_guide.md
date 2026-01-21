@@ -140,7 +140,7 @@ Create `src/lib/security/SecureCredentialStore.ts`:
 ```typescript
 import * as keytar from 'keytar';
 
-const SERVICE_NAME = 'XenderIn-Whatsapp-Automation';
+const SERVICE_NAME = 'XalesIn-Whatsapp-Automation';
 
 export class SecureCredentialStore {
   private static instance: SecureCredentialStore;

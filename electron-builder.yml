@@ -1,5 +1,5 @@
-appId: com.xenderin.whatsapp
-productName: Xender-In
+appId: com.xalesin.whatsapp
+productName: XalesIn
 directories:
   output: dist_electron_build
   buildResources: build
@@ -27,4 +27,4 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Xender-In
+  shortcutName: XalesIn

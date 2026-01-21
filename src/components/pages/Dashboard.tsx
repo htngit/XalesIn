@@ -430,7 +430,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
             <Send className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg">
-            <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
+            <FormattedMessage id="common.app.name" defaultMessage="XalesIn" />
           </span>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
@@ -448,7 +448,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
             <div className="p-6 hidden lg:flex items-center gap-2 border-b">
               <img src={appIconPng} alt="App Icon" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">
-                <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
+                <FormattedMessage id="common.app.name" defaultMessage="XalesIn" />
               </span>
             </div>
 

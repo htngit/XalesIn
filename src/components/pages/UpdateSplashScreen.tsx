@@ -53,7 +53,7 @@ export function UpdateSplashScreen({ updateInfo, currentVersion, onLater }: Upda
                                         <FormattedMessage id="system.update.title" defaultMessage="Update Available" />
                                     </h2>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        <FormattedMessage id="system.update.description" defaultMessage="A new version of Xenderin is available." />
+                                        <FormattedMessage id="system.update.description" defaultMessage="A new version of XalesIn is available." />
                                     </p>
                                 </div>
                                 {/* Mandatory badge moved to CardFooter as per instruction */}
