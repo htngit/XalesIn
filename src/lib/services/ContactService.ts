@@ -621,7 +621,13 @@ export class ContactService {
       if (isOnline) {
         try {
           // Prepare Supabase payload
-          const syncData = localToSupabase(localContact);
+          const rawSyncData = localToSupabase(localContact);
+
+          // Convert undefined to null (defensive coding for Supabase INSERT)
+          const syncData: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(rawSyncData)) {
+            syncData[key] = value === undefined ? null : value;
+          }
 
           const { error } = await supabase
             .from('contacts')

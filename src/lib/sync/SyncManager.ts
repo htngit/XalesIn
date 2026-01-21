@@ -1414,7 +1414,26 @@ export class SyncManager {
               // Update / Conflict Logic
               let shouldUpdate = false;
 
-              if (tableName === 'contacts') {
+              // GUARD: Protect pending local changes!
+              // If local record has pending changes, DO NOT overwrite with server data
+              // unless server data is significantly newer (e.g. > 5 mins) indicating a lost sync
+              const hasPendingChanges = localRecord._syncStatus && localRecord._syncStatus !== 'synced';
+
+              if (hasPendingChanges) {
+                const serverTime = new Date(normalizedServerRecord.updated_at).getTime();
+                const localTime = new Date(localRecord.updated_at).getTime();
+
+                // Only force update if server is WAY newer (5 mins), assuming local change is stale/stuck
+                if (serverTime - localTime > 5 * 60 * 1000) {
+                  console.warn(`SyncManager: Overwriting stuck local pending change for ${tableName}:${localRecord.id}`);
+                  shouldUpdate = true;
+                } else {
+                  // Protect local change
+                  //  console.log(`SyncManager: Skipping server update for ${tableName}:${localRecord.id} due to pending local changes`);
+                  shouldUpdate = false;
+                }
+              }
+              else if (tableName === 'contacts') {
                 // Simplified Last Write Wins based on Timestamp
                 const serverTime = new Date(normalizedServerRecord.updated_at).getTime();
                 const localTime = new Date(localRecord.updated_at).getTime();
