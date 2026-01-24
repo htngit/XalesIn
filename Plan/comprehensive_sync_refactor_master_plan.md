@@ -19,9 +19,11 @@ The `SyncManager` will evolve from a "God Class" into an **Orchestrator** that c
 | **SyncManager (Orchestrator)** | High-level coordination, public API surface. | Delegates tasks, initializes sub-modules, handles lifecycle. |
 | **StateManager** | SSOT (Single Source of Truth) for sync state. | Detailed state tracking, immutable updates, event checking. |
 | **LockManager** | Resource concurrency control. | Global lock (DB), Table-level locks, Operation locks. |
-| **SyncEngine** | Execution of core logic. | Pull/Push logic, payload processing, error handling. |
+| **SyncEngine** | Execution of core logic. | Pull/Push logic, payload processing, error & retry handling. |
 | **OperationQueue** | Task scheduling & throttling. | Priority handling, retries, batch processing. |
 | **NetworkMonitor** | Connection health. | Online/offline detection, quality metrics. |
+| **TelemetryManager** | System Health & Observability. | Performance tracking, error logging, health checks. |
+| **ConfigManager** | Dynamic Configuration. | Centralized sync config (batch size, timeouts). |
 
 ---
 
@@ -41,6 +43,7 @@ The `SyncManager` will evolve from a "God Class" into an **Orchestrator** that c
           progress: Map<string, number>; // TableName -> % completed
           lastSync: Map<string, number>; // TableName -> Timestamp
           isOnline: boolean;
+          health: 'healthy' | 'degraded' | 'critical'; // Added for Telemetry
         }
         ```
     *   **Validation**: Every state update runs through a validator (e.g., cannot transition from `OFFLINE` to `SYNCING` without `IDLE` or `RECONNECTING` first).
@@ -48,6 +51,7 @@ The `SyncManager` will evolve from a "God Class" into an **Orchestrator** that c
 ### 3.2 Race Condition Prevention (`LockManager`)
 **Objective**: Prevent multiple processes from writing to the same table or using the global DB connection simultaneously.
 
+*   **Dependencies**: `async-mutex` (Must be installed).
 *   **Locking Hierarchy (Critical for Deadlock Prevention)**:
     1.  **Global Lock** (Migration / Critical Reset)
     2.  **Table Lock** (Syncing a specific table)
@@ -61,6 +65,9 @@ The `SyncManager` will evolve from a "God Class" into an **Orchestrator** that c
 
 *   **Strategy**:
     *   Use `db.transaction('rw', tables, async () => { ... })` for all batch writes.
+    *   **Supabase RPC Validation**:
+        *   CRITICAL: Verify `check_quota_usage`, `reserve_quota`, `commit_quota_usage` RPC signatures.
+        *   Ensure `reserve_quota` is **never** called blindly inside a loop without rate limiting.
     *   **State Rollback**: If a DB transaction fails, the `StateManager` must revert the "Syncing" flag immediately.
 
 ### 3.4 Event Sequencing (`OperationQueue`)
@@ -76,13 +83,18 @@ The `SyncManager` will evolve from a "God Class" into an **Orchestrator** that c
 
 To ensure feasibility and minimize breakage, we will use a **Strangler Fig Pattern**: new modules are built alongside the old one, and logic is migrated piece by piece.
 
+### Phase 0: Preparation (The "Safety Net")
+1.  **Dependency Install**: `npm install async-mutex`.
+2.  **RPC Audit**: Verify `src/lib/supabase.ts` RPC calls against current Supabase definitions.
+3.  **Telemetry Setup**: Create basic `TelemetryManager` interface.
+
 ### Phase 1: Foundation (The "Brain")
 1.  **Create `StateManager`**: Implement the class with `RxJS` BehaviorSubject or simple Listeners.
-2.  **Create `LockManager`**: Implement Mutex logic.
+2.  **Create `LockManager`**: Implement Mutex logic using `async-mutex`.
 3.  **Integrate into Legacy `SyncManager`**: Replace `this.isSyncing` and `this._tableSyncInProgress` with `this.stateManager.getState()`.
     *   *Validation*: App runs exactly as before, but state is now observable.
 
-### Phase 2: concurrency Control (The "Guard")
+### Phase 2: Concurrency Control (The "Guard")
 1.  **Wrap DB Operations**: Create `SyncEngine` methods that accept a `Lock` token.
 2.  **Refactor `pullTableFromServer`**: Move logic to `SyncEngine`, protected by `LockManager.acquireTableLock()`.
     *   *Validation*: Try triggering manual sync while auto-sync is running. One should wait or abort gracefully.
@@ -94,6 +106,7 @@ To ensure feasibility and minimize breakage, we will use a **Strangler Fig Patte
 ### Phase 4: Cleanup & Polish
 1.  **Remove Legacy Flags**: Delete old boolean flags.
 2.  **Add `RecoveryManager`**: Logic to detect "Stuck Locks" (e.g., if app crashes while syncing) and release them on startup.
+3.  **Full Telemetry Integration**: Ensure all modules report health to `TelemetryManager`.
 
 ---
 

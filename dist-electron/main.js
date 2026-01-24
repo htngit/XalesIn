@@ -1,5 +1,1 @@
-"use strict";
-require("electron");
-require("path");
-require("fs");
-require("./main-Q0ed4kAc.js");
+"use strict";require("electron");require("path");require("fs");require("./main-B1MRne8A.js");

@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Clock, MessageSquare, Users, Volume2, Target, Image, Palette, ChevronRight, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { Clock, MessageSquare, Users, Volume2, Image, Palette, ChevronRight, ChevronLeft, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Key for LocalStorage
