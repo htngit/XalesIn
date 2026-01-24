@@ -751,6 +751,8 @@ function SendPageContent({
   );
 }
 
+import { SafetyWarningModal } from '@/components/ui/SafetyWarningModal';
+
 export function SendPage() {
   const {
     contactService,
@@ -789,7 +791,18 @@ export function SendPage() {
   const [showSpamWarning, setShowSpamWarning] = useState(false);
   const [spamWarningReasons, setSpamWarningReasons] = useState<string[]>([]);
 
+  // Safety Warning Modal State
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+
   const intl = useIntl();
+
+  // Check safety warning preference on mount
+  useEffect(() => {
+    const hidden = localStorage.getItem('xenderin_hide_safety_warning');
+    if (!hidden) {
+      setShowSafetyModal(true);
+    }
+  }, []);
 
   const loadData = async () => {
     try {
@@ -1244,40 +1257,48 @@ export function SendPage() {
   }
 
   return (
-    <SendPageContent
-      contacts={contacts}
-      templates={templates}
-      quota={quota}
-      groups={groups}
-      assets={assets}
-      selectedGroupIds={selectedGroupIds}
-      setSelectedGroupIds={setSelectedGroupIds}
-      selectedTemplate={selectedTemplate}
-      setSelectedTemplate={setSelectedTemplate}
-      selectedAssets={selectedAssets}
-      delayRange={delayRange}
-      setDelayRange={setDelayRange}
-      isSending={isSending}
-      sendResult={sendResult}
-      handleStartCampaign={handleStartCampaign}
-      targetContacts={targetContacts}
-      selectedTemplateData={selectedTemplateData}
-      selectedGroupData={selectedGroupData}
-      canSend={canSend}
-      previewMessage={previewMessage}
-      getSelectedAssets={getSelectedAssets}
-      toggleAssetSelection={toggleAssetSelection}
-      getAssetIcon={getAssetIcon}
-      formatFileSize={formatFileSize}
-      showProgressModal={showProgressModal}
-      setShowProgressModal={setShowProgressModal}
-      activeJobId={activeJobId}
-      flowState={flowState}
-      validationErrors={validationErrors}
-      showSpamWarning={showSpamWarning}
-      setShowSpamWarning={setShowSpamWarning}
-      spamWarningReasons={spamWarningReasons}
-      proceedWithCampaign={proceedWithCampaign}
-    />
+    <>
+      <SendPageContent
+        contacts={contacts}
+        templates={templates}
+        quota={quota}
+        groups={groups}
+        assets={assets}
+        selectedGroupIds={selectedGroupIds}
+        setSelectedGroupIds={setSelectedGroupIds}
+        selectedTemplate={selectedTemplate}
+        setSelectedTemplate={setSelectedTemplate}
+        selectedAssets={selectedAssets}
+        delayRange={delayRange}
+        setDelayRange={setDelayRange}
+        isSending={isSending}
+        sendResult={sendResult}
+        handleStartCampaign={handleStartCampaign}
+        targetContacts={targetContacts}
+        selectedTemplateData={selectedTemplateData}
+        selectedGroupData={selectedGroupData}
+        canSend={canSend}
+        previewMessage={previewMessage}
+        getSelectedAssets={getSelectedAssets}
+        toggleAssetSelection={toggleAssetSelection}
+        getAssetIcon={getAssetIcon}
+        formatFileSize={formatFileSize}
+        showProgressModal={showProgressModal}
+        setShowProgressModal={setShowProgressModal}
+        activeJobId={activeJobId}
+        flowState={flowState}
+        validationErrors={validationErrors}
+        showSpamWarning={showSpamWarning}
+        setShowSpamWarning={setShowSpamWarning}
+        spamWarningReasons={spamWarningReasons}
+        proceedWithCampaign={proceedWithCampaign}
+      />
+
+      {/* Safety Warning Modal */}
+      <SafetyWarningModal
+        open={showSafetyModal}
+        onClose={() => setShowSafetyModal(false)}
+      />
+    </>
   );
 }

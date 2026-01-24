@@ -228,6 +228,13 @@ export class AuthService {
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
+    } finally {
+      // Clear local storage preferences - ALWAYS run this
+      try {
+        localStorage.removeItem('xenderin_hide_safety_warning');
+      } catch (e) {
+        console.error('Failed to clear local storage:', e);
+      }
     }
   }
 
