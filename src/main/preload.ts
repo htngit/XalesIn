@@ -67,6 +67,11 @@ contextBridge.exposeInMainWorld('electron', {
         resumeJob: (jobId: string) =>
             ipcRenderer.invoke('whatsapp:resume-job', { jobId }),
 
+        stopJob: (jobId: string) =>
+            ipcRenderer.invoke('whatsapp:stop-job', { jobId }),
+
+        getJobStatus: () => ipcRenderer.invoke('whatsapp:get-job-status'),
+
         resyncContacts: () => ipcRenderer.invoke('whatsapp:resync-contacts'),
 
         fetchHistory: () => ipcRenderer.invoke('whatsapp:fetch-history'),
@@ -148,8 +153,11 @@ contextBridge.exposeInMainWorld('electron', {
 
     // Map Scraping API
     mapScraping: {
-        scrape: (keyword: string, limit: number) => ipcRenderer.invoke('maps:scrape', { keyword, limit }),
+        scrape: (keyword: string, limit: number, platform: 'bing' | 'google' = 'bing', existingPhones: string[] = []) =>
+            ipcRenderer.invoke('maps:scrape', { keyword, limit, platform, existingPhones }),
+        finalize: (scrapedData: any[]) => ipcRenderer.invoke('maps:finalize', { scrapedData }),
         cancel: () => ipcRenderer.invoke('maps:cancel'),
+        getStatus: () => ipcRenderer.invoke('maps:get-status'),
         onProgress: (callback: (progress: any) => void) => {
             const subscription = (_event: IpcRendererEvent, progress: any) => callback(progress);
             ipcRenderer.on('maps:progress', subscription);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useServices } from '@/lib/services/ServiceContext';
 import { ContactGroup, Contact } from '@/lib/services/types';
 import { ScrapedBusiness } from '@/types/scraping';
@@ -17,9 +17,22 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Progress } from '@/components/ui/progress';
 import { Search, Loader2, RefreshCw, Save, Phone, Globe, Minimize2, Eye, Filter } from 'lucide-react';
 import { FormattedMessage, useIntl } from 'react-intl';
+
+import { DataCleaningModal } from './DataCleaningModal';
+import { useScraping } from '@/contexts/ScrapingContext';
+import { useBackgroundTask } from '@/contexts/BackgroundTaskContext';
 
 interface ScrapTabProps {
     groups: ContactGroup[];
@@ -31,31 +44,57 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
     const intl = useIntl();
     const { contactService, groupService } = useServices();
 
-    // State
-    const [keyword, setKeyword] = useState('');
-    const [limit, setLimit] = useState(50);
-    const [results, setResults] = useState<ScrapedBusiness[]>([]);
-    const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+    // Global Scraping State
+    const {
+        isScraping,
+        progress,
+        results,
+        keyword,
+        limit,
+        platform,
+        startScraping,
+        stopScraping,
+        clearResults,
+        setKeyword,
+        setLimit,
+        setPlatform
+    } = useScraping();
 
-    // Scraping State
-    const [isScraping, setIsScraping] = useState(false);
+    // Local UI State
+    const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
     const [showProgressModal, setShowProgressModal] = useState(false);
-    const [progress, setProgress] = useState<{ total: number; current: number; message: string }>({ total: 0, current: 0, message: '' });
 
     // Filter State
     const [filterType, setFilterType] = useState<'all' | 'mobile' | 'landline'>('all');
 
-    // Computed Results
-    const filteredResults = results.filter(r => {
-        if (!r.phone) return false;
-        // Strict Mobile Rule: Only starts with +628
-        // MapScraper guarantees +62 format for 0-prefixed numbers
-        const isMobile = r.phone.startsWith('+628');
+    // Google Maps Warning State
+    const [showGoogleWarning, setShowGoogleWarning] = useState(false);
 
+    // Task Conflict State
+    const { canStartTask } = useBackgroundTask();
+    const [showConflictModal, setShowConflictModal] = useState(false);
+
+    const handlePlatformChange = (newPlatform: 'bing' | 'google') => {
+        if (newPlatform === 'google') {
+            setShowGoogleWarning(true);
+        } else {
+            setPlatform(newPlatform);
+        }
+    };
+
+    const confirmGooglePlatform = () => {
+        setPlatform('google');
+        setShowGoogleWarning(false);
+    };
+
+    // Computed Results
+    const filteredResults = useMemo(() => results.filter(r => {
+        if (!r.phone) return false;
+        const isMobile = r.phone.startsWith('+628');
         if (filterType === 'mobile') return isMobile;
         if (filterType === 'landline') return !isMobile;
         return true;
-    });
+    }), [results, filterType]);
 
     // Existing Contacts Map (normalize keys)
     const existingPhoneSet = useMemo(() => {
@@ -78,77 +117,22 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
     const [newGroupName, setNewGroupName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    // Listen for progress
-    useEffect(() => {
-        // @ts-ignore
-        const unsubscribe = window.electron.mapScraping.onProgress((p: any) => {
-            setProgress(p);
-        });
-        return () => {
-            if (unsubscribe) unsubscribe();
-        };
-    }, []);
+    // Data Cleaning State
+    const [showCleaningModal, setShowCleaningModal] = useState(false);
+    const [duplicates, setDuplicates] = useState<{ scraped: ScrapedBusiness; existing: Contact }[]>([]);
 
-    const handleScrape = async () => {
-        if (!keyword.trim()) {
-            toast({
-                title: intl.formatMessage({ id: 'common.validation_error' }),
-                description: intl.formatMessage({ id: 'scraping.notification.validation_keyword' }),
-                variant: "destructive"
-            });
-            return;
-        }
-
-        try {
-            // 1. Set Loading UI Immediately
-            setIsScraping(true);
-            setShowProgressModal(true);
-            setResults([]);
-            setSelectedIndices(new Set());
-            setProgress({ total: limit, current: 0, message: intl.formatMessage({ id: 'scraping.notification.initializing' }) });
-
-            // 2. Trigger Main Process
-            // @ts-ignore
-            const response = await window.electron.mapScraping.scrape(keyword, limit);
-
-            if (response && response.success) {
-                setResults(response.data);
-                // Auto select all valid results (with phone)
-                const validIndices = response.data
-                    .map((r: ScrapedBusiness, idx: number) => (r.phone ? idx : -1))
-                    .filter((idx: number) => idx !== -1);
-                setSelectedIndices(new Set(validIndices));
-
-                toast({
-                    title: intl.formatMessage({ id: 'scraping.notification.completed' }),
-                    description: intl.formatMessage({ id: 'scraping.notification.found' }, { count: response.data.length }),
-                });
-            } else {
-                throw new Error(response.error || 'Unknown error');
-            }
-        } catch (error) {
-            console.error('Scraping error:', error);
-            toast({
-                title: intl.formatMessage({ id: 'scraping.notification.failed' }),
-                description: error instanceof Error ? error.message : intl.formatMessage({ id: 'common.error' }),
-                variant: "destructive"
-            });
-        } finally {
-            // Reset states
-            setIsScraping(false);
-            setShowProgressModal(false);
-        }
-    };
+    // Listen for progress - REMOVED (Handled in Context)
+    /* 
+    useEffect(() => { ... }, []); 
+    */
 
     const handleCancelScrape = async () => {
-        // @ts-ignore
-        await window.electron.mapScraping.cancel();
-        // Logic continues in finally block of handleScrape
+        setShowProgressModal(false);
+        await stopScraping();
     };
 
     const handleRunInBackground = () => {
         setShowProgressModal(false);
-        // isScraping remains true, so the background process continues
         toast({
             title: intl.formatMessage({ id: 'scraping.notification.background' }),
             description: intl.formatMessage({ id: 'scraping.notification.background_desc' }),
@@ -161,7 +145,6 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            // Select only visible results that are NOT existing in DB
             const validIndices = filteredResults
                 .filter(r => !isContactExists(r.phone))
                 .map(item => results.indexOf(item));
@@ -178,9 +161,136 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
         setSelectedIndices(newSet);
     };
 
+    const handleScrape = async () => {
+        if (!keyword.trim()) {
+            toast({
+                title: intl.formatMessage({ id: 'common.validation_error' }),
+                description: intl.formatMessage({ id: 'scraping.notification.validation_keyword' }),
+                variant: "destructive"
+            });
+            return;
+        }
+
+        // Check for task conflict
+        if (!canStartTask('scraping')) {
+            setShowConflictModal(true);
+            return;
+        }
+
+        // Start Scraping via Context
+        setShowProgressModal(true);
+        setSelectedIndices(new Set()); // Reset selection
+
+        await startScraping(keyword, limit, platform);
+    };
+
     const handleSave = async () => {
         if (selectedIndices.size === 0) return;
 
+        // Detect duplicates before saving
+        const potentialDuplicates: { scraped: ScrapedBusiness; existing: Contact }[] = [];
+        const indicesToProcess = Array.from(selectedIndices);
+
+        indicesToProcess.forEach(idx => {
+            const item = results[idx];
+            if (item.phone) {
+                const normalized = item.phone.replace(/[^\d]/g, '');
+                // Find existing contact with same phone
+                const existing = existingContacts.find(c => c.phone?.replace(/[^\d]/g, '') === normalized);
+                if (existing) {
+                    potentialDuplicates.push({ scraped: item, existing });
+                }
+            }
+        });
+
+        if (potentialDuplicates.length > 0) {
+            setDuplicates(potentialDuplicates);
+            setShowCleaningModal(true);
+            return;
+        }
+
+        // If no duplicates, proceed to save directly
+        await executeSave(selectedIndices);
+    };
+
+    const handleCleaningResolve = async (resolutions: Map<string, 'skip' | 'merge_scraped' | 'merge_existing' | 'replace'>) => {
+        setShowCleaningModal(false);
+
+
+        // We need to handle updates for replace/merge logic differently than create
+        // For MVP, we will only create NEW contacts from the non-duplicate ones
+        // and handle the "replace" actions.
+        // Complex merging logic typically requires individual update calls.
+
+        // 1. Identify which selected indices trigger a resolution action
+        const updates: { contactId: string; data: Partial<Contact> }[] = [];
+        const indicesKeep = new Set<number>();
+        const indicesSkip = new Set<number>();
+
+        results.forEach((r, idx) => {
+            if (!selectedIndices.has(idx)) return;
+            const key = r.phone; // Consistent key with modal
+            const resolution = resolutions.get(key);
+
+            if (resolution === 'skip') {
+                indicesSkip.add(idx);
+            } else if (resolution === 'replace' || resolution === 'merge_scraped') {
+                // If replace/merge_scraped, we ideally update the EXISTING contact
+                // Find existing
+                const normalized = r.phone.replace(/[^\d]/g, '');
+                const existing = existingContacts.find(c => c.phone?.replace(/[^\d]/g, '') === normalized);
+
+                if (existing && existing.id) {
+                    updates.push({
+                        contactId: existing.id,
+                        data: {
+                            name: r.name, // Use scraped name
+                            // Address/Notes could be appended/merged if desired
+                            notes: `Address: ${r.address}\nUpdated via Scraping`,
+                        }
+                    });
+                    // We processed this as an update, so don't "create" it again
+                    indicesSkip.add(idx);
+                }
+            } else if (resolution === 'merge_existing') {
+                // Keep existing name, maybe update other fields? 
+                // For now, treat as skip since we keep existing data
+                indicesSkip.add(idx);
+            } else {
+                // No resolution needed (not a duplicate), keep for creation
+                indicesKeep.add(idx);
+            }
+        });
+
+        // Execute Batch Updates
+        if (updates.length > 0) {
+            // Service doesn't have bulkUpdate yet, loop for now (or implemented in service?)
+            // Assuming we must loop or add bulkUpdateService
+            // For MVP: looping update
+            await Promise.all(updates.map(u => contactService.updateContact(u.contactId, u.data)));
+            toast({
+                title: intl.formatMessage({ id: 'common.success' }),
+                description: `Updated ${updates.length} existing contacts.`,
+            });
+        }
+
+        // Execute Batch Creates for non-duplicates
+        // Filter out the ones we decided to skip or already updated
+        const indicesToCreate = new Set(
+            Array.from(selectedIndices).filter(idx => !indicesSkip.has(idx))
+        );
+
+        if (indicesToCreate.size > 0) {
+            await executeSave(indicesToCreate);
+        } else if (updates.length === 0 && indicesSkip.size > 0) {
+            toast({
+                title: intl.formatMessage({ id: 'common.info' }),
+                description: "All selected items were skipped or merged.",
+            });
+        }
+    };
+
+    const executeSave = async (indices: Set<number>) => {
         if (targetGroupId === 'new' && !newGroupName.trim()) {
             toast({
                 title: intl.formatMessage({ id: 'common.validation_error' }),
@@ -190,8 +300,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             return;
         }
 
+        setIsSaving(true);
         try {
-            setIsSaving(true);
             let groupId = targetGroupId;
 
             // Create group if new
@@ -206,15 +316,14 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             }
 
             // Convert scraped data to contacts (use filtered results)
-            const contactsToSave = Array.from(selectedIndices)
-                .filter(idx => filteredResults.some(r => results.indexOf(r) === idx))
+            const contactsToSave = Array.from(indices)
                 .map(idx => {
                     const item = results[idx];
                     return {
                         name: item.name,
                         phone: item.phone,
                         group_id: groupId,
-                        tags: ['scraped', 'bing-maps'], // Default tags
+                        tags: ['scraped', `maps-${platform}`],
                         notes: `Address: ${item.address}\nWebsite: ${item.website || '-'}\nCategory: ${item.category || '-'}`,
                         is_blocked: false
                     };
@@ -229,10 +338,11 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                 description: intl.formatMessage({ id: 'scraping.notification.save_success' }, { count: successCount }),
             });
 
-            // Reset
-            setResults([]);
+            // Reset (Context)
+            clearResults();
             setSelectedIndices(new Set());
             setKeyword('');
+            setDuplicates([]);
 
             // Small delay to allow IndexedDB to finalize writes before parent reloads
             await new Promise(resolve => setTimeout(resolve, 200));
@@ -252,6 +362,28 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
 
     return (
         <div className="space-y-6">
+            <DataCleaningModal
+                isOpen={showCleaningModal}
+                onClose={() => setShowCleaningModal(false)}
+                duplicates={duplicates}
+                onResolve={handleCleaningResolve}
+            />
+
+            {/* Google Maps Warning Modal */}
+            <AlertDialog open={showGoogleWarning} onOpenChange={setShowGoogleWarning}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle><FormattedMessage id="scraping.warning.google_maps_title" defaultMessage="Google Maps Scraping Warning" /></AlertDialogTitle>
+                        <AlertDialogDescription>
+                            <FormattedMessage id="scraping.warning.google_maps_desc" defaultMessage="Scraping Google Maps takes longer but provides more accurate results." />
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={confirmGooglePlatform}><FormattedMessage id="scraping.warning.google_maps_confirm" defaultMessage="Continue" /></AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {/* Background Scraping Banner */}
             {isScraping && !showProgressModal && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between animate-pulse">
@@ -280,6 +412,24 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 items-end">
+                        {/* Platform Selector */}
+                        <div className="w-full md:w-32 space-y-2">
+                            <label className="text-sm font-medium"><FormattedMessage id="scraping.platform.label" defaultMessage="Platform" /></label>
+                            <Select
+                                value={platform}
+                                onValueChange={(v: 'bing' | 'google') => handlePlatformChange(v)}
+                                disabled={isScraping}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="bing">Bing Maps</SelectItem>
+                                    <SelectItem value="google">Google Maps</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <div className="flex-1 space-y-2 w-full">
                             <label className="text-sm font-medium"><FormattedMessage id="scraping.keyword.label" defaultMessage="Search Keyword" /></label>
                             <div className="relative">
@@ -415,7 +565,9 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                     {filteredResults.map((item) => {
                                         const index = results.indexOf(item); // Get original index for selection
                                         const isExisting = isContactExists(item.phone);
-                                        const isRowDisabled = !item.phone || isExisting;
+                                        const isRowDisabled = !item.phone;
+                                        // Note: We ALLOW selecting existing contacts now, because we have Duplicate Resolution flow
+                                        // So only disable if no phone
 
                                         return (
                                             <TableRow key={index} className={isRowDisabled ? 'opacity-50 bg-muted/30' : ''}>
@@ -430,11 +582,13 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                                 </TableCell>
                                                 <TableCell className="font-medium text-xs">
                                                     {item.name}
-                                                    {isExisting && <span className="block text-[10px] text-red-500 font-semibold"><FormattedMessage id="scraping.table.already_saved" defaultMessage="(Already Saved)" /></span>}
+                                                    {isExisting && <span className="block text-[10px] text-yellow-600 font-semibold flex items-center gap-1">
+                                                        <RefreshCw className="w-3 h-3" /> Potential Duplicate
+                                                    </span>}
                                                 </TableCell>
                                                 <TableCell>
                                                     {item.phone ? (
-                                                        <div className={`flex items-center ${isExisting ? 'text-red-500' : 'text-green-600'}`}>
+                                                        <div className={`flex items-center ${isExisting ? 'text-yellow-600' : 'text-green-600'}`}>
                                                             <Phone className="mr-2 h-3 w-3" />
                                                             {item.phone}
                                                         </div>
@@ -471,7 +625,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
-                        <Progress value={(progress.current / progress.total) * 100} />
+                        <Progress value={(progress.total > 0 ? (progress.current / progress.total) * 100 : 0)} />
+                        {/* Avoid division by zero */}
                         <div className="flex justify-between text-sm text-muted-foreground">
                             <span className="animate-pulse">{progress.message}</span>
                             <span>{progress.current} / {progress.total}</span>
@@ -486,6 +641,28 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Task Conflict Modal */}
+            <AlertDialog open={showConflictModal} onOpenChange={setShowConflictModal}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            <FormattedMessage id="background.conflict.title" defaultMessage="Task Already Running" />
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            <FormattedMessage
+                                id="background.conflict.campaign"
+                                defaultMessage="A campaign is currently in progress. Please wait for it to complete or stop it before starting scraping."
+                            />
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setShowConflictModal(false)}>
+                            <FormattedMessage id="background.conflict.dismiss" defaultMessage="Got it" />
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

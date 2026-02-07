@@ -35,8 +35,8 @@ const createWindow = async () => {
     let iconPath;
     try {
         if (process.env.VITE_DEV_SERVER_URL) {
-            // Development mode - use absolute path to public directory
-            const publicPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.png');
+            // Development mode - use path relative to project root
+            const publicPath = path.join(process.cwd(), 'public', 'icon.png');
             console.log('[Main] Development mode - trying icon path:', publicPath);
 
             // Check if file exists before using it
@@ -48,20 +48,25 @@ const createWindow = async () => {
                 iconPath = undefined;
             }
         } else {
-            // Production mode - use icon.ico from full path
-            const productionIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
-            console.log('[Main] Production mode - trying icon path:', productionIconPath);
+            // Production mode
+            // 1. Try extraResources path (standard for electron-builder)
+            const resourcesIconPath = path.join(process.resourcesPath, 'icon.ico');
+            console.log('[Main] Production mode - trying resources path:', resourcesIconPath);
 
-            // Check if file exists before using it
-            const fileExistsResult = await fileExists(productionIconPath);
-            if (fileExistsResult) {
-                iconPath = productionIconPath;
+            if (await fileExists(resourcesIconPath)) {
+                iconPath = resourcesIconPath;
             } else {
-                // Fallback to resources path if icon.ico not found in app directory
-                const resourcesIconPath = path.join('C:', 'Users', 'andry', 'AnotherProjectCode', 'Server', 'XalesIn-Whatsapp', 'xenderin', 'public', 'icon.ico');
-                console.log('[Main] Fallback icon path:', resourcesIconPath);
-                const resourcesFileExists = await fileExists(resourcesIconPath);
-                iconPath = resourcesFileExists ? resourcesIconPath : undefined;
+                // 2. Fallback to public folder relative to app path (if unpacked)
+                const publicIconPath = path.join(process.resourcesPath, 'app', 'public', 'icon.ico');
+                // Or maybe relative to __dirname?
+                // const publicIconPath = path.join(__dirname, '../public/icon.ico');
+
+                console.log('[Main] Fallback icon path:', publicIconPath);
+                if (await fileExists(publicIconPath)) {
+                    iconPath = publicIconPath;
+                } else {
+                    iconPath = undefined;
+                }
             }
         }
     } catch (error) {

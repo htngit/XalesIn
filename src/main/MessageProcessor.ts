@@ -44,6 +44,22 @@ export class MessageProcessor {
     }
 
     /**
+     * Get current processing status (for UI state restoration)
+     */
+    getStatus(): { isProcessing: boolean; currentJob: JobData | null; progress: any } {
+        return {
+            isProcessing: this.isProcessing,
+            currentJob: this.currentJob,
+            progress: this.currentJob ? {
+                jobId: this.currentJob.jobId,
+                total: this.currentJob.contacts?.length || 0,
+                processed: 0, // Will be updated via events
+                status: this.isPaused ? 'paused' : (this.isProcessing ? 'processing' : 'pending')
+            } : null
+        };
+    }
+
+    /**
      * Process a bulk message job
      */
     async processJob(job: JobData) {

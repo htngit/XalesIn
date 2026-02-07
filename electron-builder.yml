@@ -18,9 +18,9 @@ asarUnpack:
   - "node_modules/@img/**/*"
 win:
   target: nsis
-  icon: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+  icon: public/icon.ico
 extraResources:
-  - from: C:\Users\andry\AnotherProjectCode\Server\XalesIn-Whatsapp\xenderin\public\icon.ico
+  - from: public/icon.ico
     to: icon.ico
 nsis:
   oneClick: false

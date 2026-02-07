@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { SyncProgressToast } from '@/components/ui/sync-progress-toast';
+import { useScraping } from '@/contexts/ScrapingContext';
 
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -39,9 +40,20 @@ import {
   Menu,
   X,
   File,
-  Inbox
+  Inbox,
+  LayoutGrid,
+  Briefcase,
+  Loader2
 } from 'lucide-react';
 import { useIntl, FormattedMessage } from 'react-intl';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CRMDashboard } from './CRMDashboard';
 
 // Import app icon as module to ensure proper path resolution in Electron production build
 import appIconPng from '/icon.png';
@@ -78,11 +90,26 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { masterUserId, isLoading: isUserLoading } = useUser();
   const intl = useIntl();
+  const { isScraping } = useScraping();
 
   // App state
   const [appState, setAppState] = useState<'loading' | 'first-time-sync' | 'ready' | 'error'>('loading');
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Workspace State
+  const [workspace, setWorkspace] = useState<'message' | 'crm'>('message');
+
+  // CRM Menu Items
+  const crmMenuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
+    { id: 'leads', label: 'Leads', icon: Users },
+    { id: 'pipeline', label: 'Pipeline', icon: TrendingUp },
+    { id: 'activities', label: 'Activities', icon: Clock },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
+  const [activeCrmPage, setActiveCrmPage] = useState('dashboard');
 
   // Real‑time data
   const [quota, setQuota] = useState<Quota | null>(null);
@@ -454,33 +481,95 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
 
             <div className="flex-1 overflow-y-auto py-4">
               <nav className="px-4 space-y-2">
-                <Button variant="secondary" className="w-full justify-start gap-3 bg-primary/10 text-primary hover:bg-primary/20">
-                  <BarChart3 className="h-4 w-4" />
-                  <FormattedMessage id="dashboard.menu.dashboard" defaultMessage="Dashboard" />
-                </Button>
-                <div className="pt-4 pb-2">
-                  <p className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    <FormattedMessage id="dashboard.sidebar.management" defaultMessage="Management" />
-                  </p>
+                {/* Workspace Switcher */}
+                <div className="mb-4">
+                  <Select value={workspace} onValueChange={(v: any) => setWorkspace(v)}>
+                    <SelectTrigger className="w-full bg-slate-50 border-slate-200">
+                      <SelectValue placeholder="Select Workspace" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="message">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4" />
+                          <span>Message</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="crm">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4" />
+                          <span>CRM (Mockup)</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                {menuItems.map((item) => (
-                  <Button
-                    key={item.id}
-                    variant="ghost"
-                    className="w-full justify-start gap-3 relative" // Added relative for positioning if needed, but flex works
-                    onClick={() => handleMenuClick(item.id)}
-                  >
-                    <MenuIcon iconKey={item.id} className="h-4 w-4" />
-                    <span className="flex-1 text-left">{item.label}</span>
 
-                    {/* Inbox Badge */}
-                    {item.id === 'inbox' && unreadCount > 0 && (
-                      <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </span>
-                    )}
-                  </Button>
-                ))}
+                {workspace === 'message' ? (
+                  <>
+                    <Button
+                      variant={workspace === 'message' ? "secondary" : "ghost"}
+                      className={`w-full justify-start gap-3 ${workspace === 'message' ? 'bg-primary/10 text-primary hover:bg-primary/20' : ''}`}
+                      onClick={() => workspace !== 'message' && setWorkspace('message')}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      <FormattedMessage id="dashboard.menu.dashboard" defaultMessage="Dashboard" />
+                    </Button>
+                    <div className="pt-4 pb-2">
+                      <p className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <FormattedMessage id="dashboard.sidebar.management" defaultMessage="Management" />
+                      </p>
+                    </div>
+                    {menuItems.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant="ghost"
+                        className="w-full justify-start gap-3 relative"
+                        onClick={() => handleMenuClick(item.id)}
+                      >
+                        <MenuIcon iconKey={item.id} className={`h-4 w-4 shrink-0 ${item.id === 'contacts' && isScraping ? 'text-primary' : ''}`} />
+                        <div className="flex-1 text-left overflow-hidden">
+                          <div className="flex items-center gap-2">
+                            <span>{item.label}</span>
+                            {item.id === 'contacts' && isScraping && (
+                              <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                            )}
+                          </div>
+                          {item.id === 'contacts' && isScraping && (
+                            <p className="text-[10px] text-muted-foreground leading-tight truncate animate-pulse">
+                              <FormattedMessage id="scraping.sidebar.status" defaultMessage="Scraping..." />
+                            </p>
+                          )}
+                        </div>
+                        {item.id === 'inbox' && unreadCount > 0 && (
+                          <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center ml-auto">
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                          </span>
+                        )}
+                      </Button>
+                    ))}
+                  </>
+                ) : (
+                  // CRM Sidebar
+                  <div className="space-y-1">
+                    <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      CRM Utils
+                    </p>
+                    {crmMenuItems.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant={activeCrmPage === item.id ? "secondary" : "ghost"}
+                        className={`w-full justify-start gap-3 ${activeCrmPage === item.id ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'hover:bg-gray-100'}`}
+                        onClick={() => {
+                          setActiveCrmPage(item.id);
+                          setSidebarOpen(false);
+                        }}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </nav>
             </div>
 
@@ -536,101 +625,120 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto bg-gray-50/50 lg:ml-64">
           <div className="max-w-7xl mx-auto p-4 lg:p-8 space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  <FormattedMessage id="dashboard.overview.title" defaultMessage="Dashboard Overview" />
-                </h1>
-                <p className="text-muted-foreground">
-                  <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back!" />
-                </p>
-              </div>
-
-              {/* WhatsApp Connection Status */}
-              <div className="flex items-center">
-                <WhatsAppConnectionStatus />
-              </div>
-            </div>
-
-            {/* Stats Grid */}
-            <Stagger>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      <FormattedMessage id="dashboard.stats.contacts" defaultMessage="Total Contacts" />
-                    </CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    {isSyncingData ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <div className="text-2xl font-bold">{stats.totalContacts}</div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      <FormattedMessage id="dashboard.stats.active_contacts" defaultMessage="Active contacts" />
+            {workspace === 'crm' ? (
+              activeCrmPage === 'dashboard' ? (
+                <CRMDashboard />
+              ) : (
+                // Development Phase Overlay
+                <div className="flex flex-col items-center justify-center min-h-[60vh] text-center border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                  <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+                    <Briefcase className="h-8 w-8 text-orange-500" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-800">Feature Under Development</h2>
+                  <p className="text-muted-foreground max-w-md mt-2">
+                    The <strong>{crmMenuItems.find(i => i.id === activeCrmPage)?.label}</strong> module is currently in the development phase. Check back later for updates.
+                  </p>
+                </div>
+              )
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-2xl font-bold tracking-tight">
+                      <FormattedMessage id="dashboard.overview.title" defaultMessage="Dashboard Overview" />
+                    </h1>
+                    <p className="text-muted-foreground">
+                      <FormattedMessage id="dashboard.overview.subtitle" defaultMessage="Welcome back!" />
                     </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      <FormattedMessage id="dashboard.stats.templates" defaultMessage="Templates" />
-                    </CardTitle>
-                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    {isSyncingData ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <div className="text-2xl font-bold">{stats.totalTemplates}</div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      <FormattedMessage id="dashboard.stats.active_templates" defaultMessage="Active templates" />
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      <FormattedMessage id="dashboard.stats.messages" defaultMessage="Messages Sent" />
-                    </CardTitle>
-                    <Send className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    {isSyncingData ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <div className="text-2xl font-bold">{stats.messagesSent}</div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      <FormattedMessage id="dashboard.stats.this_month" defaultMessage="This month" />
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      <FormattedMessage id="dashboard.stats.quota" defaultMessage="Quota Usage" />
-                    </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    {/* Quota renders immediately - no sync dependency */}
-                    <div className="text-2xl font-bold">
-                      {formatQuotaDisplay(stats.quotaRemaining)} / {formatQuotaDisplay(stats.quotaLimit)}
-                    </div>
-                    <Progress value={quotaPercentage} className="h-2 mt-2" />
-                  </CardContent>
-                </Card>
-              </div>
-            </Stagger>
+                  </div>
 
-            {/* Gemini AI Container */}
-            <div className="mt-8">
-              <GeminiCard />
-            </div>
+                  {/* WhatsApp Connection Status */}
+                  <div className="flex items-center">
+                    <WhatsAppConnectionStatus />
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <Stagger>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                          <FormattedMessage id="dashboard.stats.contacts" defaultMessage="Total Contacts" />
+                        </CardTitle>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        {isSyncingData ? (
+                          <Skeleton className="h-8 w-20" />
+                        ) : (
+                          <div className="text-2xl font-bold">{stats.totalContacts}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          <FormattedMessage id="dashboard.stats.active_contacts" defaultMessage="Active contacts" />
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                          <FormattedMessage id="dashboard.stats.templates" defaultMessage="Templates" />
+                        </CardTitle>
+                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        {isSyncingData ? (
+                          <Skeleton className="h-8 w-20" />
+                        ) : (
+                          <div className="text-2xl font-bold">{stats.totalTemplates}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          <FormattedMessage id="dashboard.stats.active_templates" defaultMessage="Active templates" />
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                          <FormattedMessage id="dashboard.stats.messages" defaultMessage="Messages Sent" />
+                        </CardTitle>
+                        <Send className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        {isSyncingData ? (
+                          <Skeleton className="h-8 w-20" />
+                        ) : (
+                          <div className="text-2xl font-bold">{stats.messagesSent}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          <FormattedMessage id="dashboard.stats.this_month" defaultMessage="This month" />
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                          <FormattedMessage id="dashboard.stats.quota" defaultMessage="Quota Usage" />
+                        </CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        {/* Quota renders immediately - no sync dependency */}
+                        <div className="text-2xl font-bold">
+                          {formatQuotaDisplay(stats.quotaRemaining)} / {formatQuotaDisplay(stats.quotaLimit)}
+                        </div>
+                        <Progress value={quotaPercentage} className="h-2 mt-2" />
+                      </CardContent>
+                    </Card>
+                  </div>
+                </Stagger>
+
+                {/* Gemini AI Container */}
+                <div className="mt-8">
+                  <GeminiCard />
+                </div>
+              </>
+            )}
 
 
           </div>

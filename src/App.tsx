@@ -31,6 +31,9 @@ import { UserProvider } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
 import { IntlProvider } from '@/lib/i18n/IntlProvider';
+import { BackgroundTaskProvider } from '@/contexts/BackgroundTaskContext';
+import { ScrapingProvider } from '@/contexts/ScrapingContext';
+import { CampaignProvider } from '@/contexts/CampaignContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,91 +82,65 @@ const ProtectedRoutes = ({
   onLogout: () => void;
 }) => {
   return (
-    <Routes>
-      {/* Dashboard wrapped with ServiceProvider for consistent service access */}
-      <Route
-        path="/dashboard"
-        element={
-          <ServiceProvider>
-            <Dashboard
-              userName={authData?.user.name || 'User'}
-              onLogout={onLogout}
-            />
-          </ServiceProvider>
-        }
-      />
+    <ServiceProvider>
+      <BackgroundTaskProvider>
+        <ScrapingProvider>
+          <CampaignProvider>
+            <Routes>
+              {/* Dashboard */}
+              <Route
+                path="/dashboard"
+                element={
+                  <Dashboard
+                    userName={authData?.user.name || 'User'}
+                    onLogout={onLogout}
+                  />
+                }
+              />
 
-      {/* Inbox Chat */}
-      <Route
-        path="/inbox"
-        element={
-          <ServiceProvider>
-            <InboxPage />
-          </ServiceProvider>
-        }
-      />
+              {/* Inbox Chat */}
+              <Route
+                path="/inbox"
+                element={<InboxPage />}
+              />
 
-      {/* Other pages consume services via ServiceProvider */}
-      <Route
-        path="/contacts"
-        element={
-          <ServiceProvider>
-            <ContactsPage />
-          </ServiceProvider>
-        }
-      />
-      <Route
-        path="/templates"
-        element={
-          <ServiceProvider>
-            <TemplatesPage />
-          </ServiceProvider>
-        }
-      />
-      <Route
-        path="/assets"
-        element={
-          <ServiceProvider>
-            <AssetPage />
-          </ServiceProvider>
-        }
-      />
-      <Route
-        path="/send"
-        element={
-          <ServiceProvider>
-            <SendPage />
-          </ServiceProvider>
-        }
-      />
-      <Route
-        path="/history"
-        element={
-          <ServiceProvider>
-            <HistoryPage />
-          </ServiceProvider>
-        }
-      />
+              {/* Other pages consume services via global ServiceProvider */}
+              <Route
+                path="/contacts"
+                element={<ContactsPage />}
+              />
+              <Route
+                path="/templates"
+                element={<TemplatesPage />}
+              />
+              <Route
+                path="/assets"
+                element={<AssetPage />}
+              />
+              <Route
+                path="/send"
+                element={<SendPage />}
+              />
+              <Route
+                path="/history"
+                element={<HistoryPage />}
+              />
 
-      <Route
-        path="/groups"
-        element={
-          <ServiceProvider>
-            <GroupPage />
-          </ServiceProvider>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ServiceProvider>
-            <SettingsPage userName={authData?.user.name || 'User'} />
-          </ServiceProvider>
-        }
-      />
+              <Route
+                path="/groups"
+                element={<GroupPage />}
+              />
+              <Route
+                path="/settings"
+                element={<SettingsPage userName={authData?.user.name || 'User'} />}
+              />
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </CampaignProvider>
+        </ScrapingProvider>
+      </BackgroundTaskProvider>
+    </ServiceProvider>
   );
 };
 

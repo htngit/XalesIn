@@ -201,46 +201,7 @@ export function ProfileTab() {
             {/* PIN Change */}
             <PINChangeForm />
 
-            {/* Account Security Info */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>
-                        <FormattedMessage id="settings.profile.security.title" defaultMessage="Account Security" />
-                    </CardTitle>
-                    <CardDescription>
-                        <FormattedMessage id="settings.profile.security.desc" defaultMessage="Additional security information" />
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    <div className="flex justify-between items-center py-2 border-b">
-                        <span className="text-sm font-medium">
-                            <FormattedMessage id="settings.profile.last_signin" defaultMessage="Last Sign In" />
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                            {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString(intl.locale === 'id' ? 'id-ID' : 'en-US') : intl.formatMessage({ id: 'common.na', defaultMessage: 'N/A' })}
-                        </span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b">
-                        <span className="text-sm font-medium">
-                            <FormattedMessage id="settings.profile.email_verified" defaultMessage="Email Verified" />
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                            {user?.email_confirmed_at
-                                ? <FormattedMessage id="common.yes" defaultMessage="Yes" />
-                                : <FormattedMessage id="common.no" defaultMessage="No" />
-                            }
-                        </span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                        <span className="text-sm font-medium">
-                            <FormattedMessage id="settings.profile.user_id" defaultMessage="User ID" />
-                        </span>
-                        <span className="text-sm text-muted-foreground font-mono text-xs">
-                            {user?.id?.substring(0, 8)}...
-                        </span>
-                    </div>
-                </CardContent>
-            </Card>
+
         </div>
     );
 }

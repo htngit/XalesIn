@@ -240,6 +240,11 @@ export class ContactService {
    */
   async getContacts(): Promise<ContactWithGroup[]> {
     try {
+      // Ensure DB is open (handle potential closure from HMR or other services)
+      if (!db.isOpen()) {
+        await db.open();
+      }
+
       // RLS policies handle data isolation at the database level
       const masterUserId = await this.getMasterUserId();
 
@@ -574,6 +579,11 @@ export class ContactService {
    */
   async createContact(contactData: Omit<Contact, 'id' | 'created_at' | 'updated_at' | 'master_user_id' | 'created_by'>): Promise<ContactWithGroup> {
     try {
+      // Ensure DB is open
+      if (!db.isOpen()) {
+        await db.open();
+      }
+
       // Enforce data isolation - check user context and permissions
       const hasPermission = await userContextManager.canPerformAction('create_contacts', 'contacts');
       if (!hasPermission) {
@@ -695,6 +705,11 @@ export class ContactService {
    */
   async createContacts(contactsData: Omit<Contact, 'id' | 'created_at' | 'updated_at' | 'master_user_id' | 'created_by'>[]): Promise<{ success: boolean; created: number; errors: string[] }> {
     try {
+      // Ensure DB is open
+      if (!db.isOpen()) {
+        await db.open();
+      }
+
       const hasPermission = await userContextManager.canPerformAction('create_contacts', 'contacts');
       if (!hasPermission) {
         throw new Error('Access denied: insufficient permissions to create contacts');

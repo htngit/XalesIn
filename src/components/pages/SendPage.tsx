@@ -64,6 +64,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useBackgroundTask } from '@/contexts/BackgroundTaskContext';
 
 const PRESET_DELAYS = [1, 3, 5, 10, 15, 30, 60, 120, 300, 600, 900];
 
@@ -794,6 +795,10 @@ export function SendPage() {
   // Safety Warning Modal State
   const [showSafetyModal, setShowSafetyModal] = useState(false);
 
+  // Task Conflict State
+  const { canStartTask } = useBackgroundTask();
+  const [showConflictModal, setShowConflictModal] = useState(false);
+
   const intl = useIntl();
 
   // Check safety warning preference on mount
@@ -921,6 +926,12 @@ export function SendPage() {
 
   const handleStartCampaign = async () => {
     if (!selectedTemplate || !quota) return;
+
+    // Check for task conflict (scraping running)
+    if (!canStartTask('campaign')) {
+      setShowConflictModal(true);
+      return;
+    }
 
     const selectedTemplateData = getSelectedTemplate();
 
@@ -1299,6 +1310,28 @@ export function SendPage() {
         open={showSafetyModal}
         onClose={() => setShowSafetyModal(false)}
       />
+
+      {/* Task Conflict Modal */}
+      <AlertDialog open={showConflictModal} onOpenChange={setShowConflictModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {intl.formatMessage({ id: 'background.conflict.title', defaultMessage: 'Task Already Running' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {intl.formatMessage({
+                id: 'background.conflict.scraping',
+                defaultMessage: 'Scraping is currently in progress. Please wait for it to complete or stop it before starting a campaign.'
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowConflictModal(false)}>
+              {intl.formatMessage({ id: 'background.conflict.dismiss', defaultMessage: 'Got it' })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
