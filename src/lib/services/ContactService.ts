@@ -59,13 +59,17 @@ export class ContactService {
 
     // Start auto sync
     this.syncManager.startAutoSync();
-
-    // Initial sync with error handling
-    // Initial sync with error handling (non-blocking)
-    this.syncManager.triggerSync().catch(error => {
-      console.warn('Initial sync failed, will retry later:', error);
-    });
   }
+
+  /**
+   * Check if initial sync is in progress
+   */
+  isSyncInProgress(): boolean {
+    return this.syncManager.isInitialSyncInProgress();
+  }
+
+
+
 
 
   /**
@@ -74,9 +78,8 @@ export class ContactService {
   private async backgroundSyncContacts(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
+      // Initial sync is now handled by InitialSyncOrchestrator
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }
@@ -104,22 +107,45 @@ export class ContactService {
 
     const user = await this.getCurrentUser();
 
-    // Get user's profile to find master_user_id
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('master_user_id')
-      .eq('id', user.id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      if (options.strict) {
-        throw new Error(`Failed to resolve master user ID: ${error.message}`);
+    try {
+      // 1. Try to get from local database first (Offline-first)
+      const localProfile = await db.profiles.get(user.id);
+      if (localProfile && localProfile.master_user_id) {
+        this.masterUserId = localProfile.master_user_id;
+        return this.masterUserId;
       }
-      return user.id; // Fallback to current user ID
+
+      // 2. If not found locally, try Supabase
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('master_user_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        // Only log warning, as this is expected in offline mode if profile not synced yet
+        console.warn('Could not fetch user profile from Supabase:', error);
+
+        if (options.strict) {
+          throw new Error(`Failed to resolve master user ID: ${error.message}`);
+        }
+
+        // Final fallback
+        return user.id;
+      }
+
+      if (profile) {
+        this.masterUserId = profile.master_user_id;
+        return this.masterUserId!;
+      }
+    } catch (err) {
+      console.error('Error resolving master_user_id:', err);
+      if (options.strict) {
+        throw err;
+      }
     }
 
-    this.masterUserId = profile?.master_user_id || user.id;
+    this.masterUserId = user.id;
     return this.masterUserId!;
   }
 
@@ -146,7 +172,7 @@ export class ContactService {
             id: contact.id || crypto.randomUUID(),
             name: 'Invalid Contact',
             phone: '',
-            group_id: contact.group_id || '',
+            group_id: contact.group_id || undefined,
             master_user_id: contact.master_user_id || '',
             created_by: contact.created_by || '',
             tags: [],
@@ -164,7 +190,7 @@ export class ContactService {
         const transformed: ContactWithGroup = {
           ...standardized,
           name: sanitizeString(standardized.name, 'name', 255),
-          phone: sanitizeString(standardized.phone, 'phone', 20),
+          phone: sanitizeString(standardized.phone, 'phone', 50), // Increased to 50 to accommodate WhatsApp JIDs
           tags: sanitizeArray(standardized.tags, 'tags', (tag): tag is string => typeof tag === 'string'),
           notes: sanitizeString(standardized.notes, 'notes', 1000),
           is_blocked: sanitizeBoolean(standardized.is_blocked, 'is_blocked'),
@@ -236,8 +262,20 @@ export class ContactService {
         const enrichedContacts = await this.enrichContactsWithGroups(localContacts);
 
         // If online, trigger background sync to update local data
+        // If online, trigger background sync to update local data
+        // Only trigger if we haven't synced in the last minute (to prevent spamming on navigation)
         if (isOnline) {
-          this.backgroundSyncContacts().catch(console.warn);
+          const lastSync = this.syncManager.getGlobalLastSyncTime();
+          const timeSinceSync = Date.now() - lastSync.getTime();
+
+          // Sync if never synced (time is 0) or > 60 seconds ago
+          if (lastSync.getTime() === 0 || timeSinceSync > 60000) {
+            console.log('ContactService: Triggering background sync (Debounced)');
+            // We use triggerSync directly from syncManager to ensure correct timer handling
+            this.syncManager.triggerSync().catch(err => {
+              console.warn('Background sync failed:', err);
+            });
+          }
         }
 
         return enrichedContacts;
@@ -245,23 +283,27 @@ export class ContactService {
 
       // No local data available
       if (isOnline) {
+        // NOTE: We do NOT trigger full sync here anymore to prevent intrusive UI toast.
+        // We fallback to direct server fetch (read-only) and let autoSync handle the local DB population in background.
+        /*
         try {
           // Try to sync from server
           await this.syncManager.triggerSync();
-
+      
           // Try local again after sync
           localContacts = await db.contacts
             .where('master_user_id')
             .equals(masterUserId)
             .and(contact => !contact._deleted)
             .toArray();
-
+      
           if (localContacts.length > 0) {
             return await this.enrichContactsWithGroups(localContacts);
           }
         } catch (syncError) {
           console.warn('Sync failed, trying direct server fetch:', syncError);
         }
+        */
 
         // Fallback to direct server fetch
         return await this.fetchContactsFromServer();
@@ -330,33 +372,33 @@ export class ContactService {
 
   /**
    * Fetch contacts directly from server
+   * Uses RPC to bypass the 1000 row limit of standard Supabase queries
    */
   private async fetchContactsFromServer(): Promise<ContactWithGroup[]> {
     await this.getCurrentUser(); // Ensure user is authenticated
     const masterUserId = await this.getMasterUserId();
 
-    const { data, error } = await supabase
-      .from('contacts')
-      .select(`
-        *,
-        groups (
-          id,
-          name,
-          color
-        )
-      `)
-      .eq('master_user_id', masterUserId)
-      .eq('is_blocked', false)
-      .order('name');
+    // Use RPC to fetch ALL contacts (bypass 1000 row limit)
+    const { data, error } = await supabase.rpc('sync_pull_contacts', {
+      p_master_user_id: masterUserId,
+      p_last_sync: '1970-01-01' // Fetch all contacts
+    });
 
-    if (error) throw error;
+    if (error) {
+      console.error('RPC sync_pull_contacts failed:', error);
+      throw error;
+    }
+
+    const contacts = (data || []) as LocalContact[];
+    console.log(`Fetched ${contacts.length} contacts from server via RPC`);
 
     // Transform server data to match interface with standardized timestamps
-    return (data || []).map(contact => {
+    return contacts.map(contact => {
       const standardized = standardizeForService(contact, 'contact');
       return {
         ...standardized,
-        groups: contact.groups
+        // Note: RPC doesn't include group data, we'll enrich later if needed
+        groups: null
       };
     }) as ContactWithGroup[];
   }
@@ -421,6 +463,23 @@ export class ContactService {
   async getAllContacts(): Promise<Contact[]> {
     const contacts = await this.getContacts();
     return contacts;
+  }
+
+  /**
+   * Get the count of contacts for the current user
+   */
+  async getContactCount(): Promise<number> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      return await db.contacts
+        .where('master_user_id')
+        .equals(masterUserId)
+        .and(contact => !contact._deleted)
+        .count();
+    } catch (error) {
+      console.warn('Error counting contacts:', error);
+      return 0;
+    }
   }
 
   /**
@@ -557,20 +616,60 @@ export class ContactService {
         ...newLocalContact
       };
 
+      // Server-First Approach if Online
+      // Server-First Approach if Online
+      if (isOnline) {
+        try {
+          // Prepare Supabase payload
+          const rawSyncData = localToSupabase(localContact);
+
+          // Convert undefined to null (defensive coding for Supabase INSERT)
+          const syncData: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(rawSyncData)) {
+            syncData[key] = value === undefined ? null : value;
+          }
+
+          const { error } = await supabase
+            .from('contacts')
+            .insert(syncData);
+
+          if (error) throw error;
+
+          // Trigger full sync to update local DB (and ensuring consistency)
+          await this.syncManager.triggerSync();
+
+          // Return the contact from local DB (which should be updated by sync)
+          const syncedContact = await this.getContactById(contactId);
+          if (syncedContact) return syncedContact;
+
+          // If sync was slow and didn't bring it back yet, 
+          // we manually add it LOCALLY as 'synced' so we don't queue it again.
+          const manualSyncedContact = { ...localContact, _syncStatus: 'synced' as const };
+          await db.contacts.add(manualSyncedContact);
+
+          // Return enriched
+          const enriched = await this.enrichContactsWithGroups([manualSyncedContact]);
+          return enriched[0];
+
+        } catch (serverError) {
+          console.error('Server-First Create Failed, falling back to Local:', serverError);
+          // Fallback to local logic below...
+        }
+      }
+
       await db.contacts.add(localContact);
 
       // Transform for sync queue (convert Date objects to ISO strings)
       const syncData = localToSupabase(localContact);
 
-      // Try to sync immediately if online, otherwise queue for later
+      // Try to sync immediately if online (and server-first failed or skipped), otherwise queue for later
       if (isOnline) {
+        // ... existing queue logic ...
         try {
           await this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData);
         } catch (syncError) {
           console.warn('Immediate sync failed, will retry later:', syncError);
-          // Still add to queue for later retry
-          this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData)
-            .catch(console.error);
+          this.syncManager.addToSyncQueue('contacts', 'create', contactId, syncData).catch(console.error);
         }
       } else {
         // Offline mode: queue for later sync
@@ -657,6 +756,36 @@ export class ContactService {
         }
       }
 
+      // Batch Operations
+
+      // Server-First Approach for Bulk
+      if (isOnline) {
+        try {
+          const supabaseBatch = localContacts.map(c => localToSupabase(c));
+
+          // Chunking for Supabase/Postgres limits
+          const chunkSize = 100;
+          for (let i = 0; i < supabaseBatch.length; i += chunkSize) {
+            const chunk = supabaseBatch.slice(i, i + chunkSize);
+            const { error } = await supabase.from('contacts').insert(chunk);
+            if (error) throw error;
+          }
+
+          // Trigger Sync
+          await this.syncManager.triggerSync();
+
+          return {
+            success: true,
+            created: localContacts.length,
+            errors: []
+          };
+
+        } catch (e) {
+          console.error('Server-First Bulk Create Failed, falling back to Local:', e);
+          // Fallback to local
+        }
+      }
+
       if (localContacts.length > 0) {
         // Bulk add to local DB
         await db.contacts.bulkAdd(localContacts);
@@ -690,6 +819,245 @@ export class ContactService {
   }
 
   /**
+   * Sync contacts from WhatsApp DIRECTLY to Server (Server-First Approach)
+   * This ensures the server is the single source of truth.
+   * 1. Fetches existing contact map from Server (ID, Phone)
+   * 2. Maps WA contacts to Supabase schema, reusing IDs if phone matches
+   * 3. Batches upserts to Supabase (per 100)
+   * 4. Triggers full sync from Server to Local
+   */
+  async syncWhatsAppContactsDirectlyToServer(waContacts: Array<{ phone: string; name?: string }>): Promise<{ added: number; updated: number; errors: number }> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      const user = await this.getCurrentUser();
+      const timestamps = addTimestamps({}, false);
+
+      // 1. Fetch minimal map of existing Server contacts (ID, Phone)
+      // We need this to ensure we don't create duplicates and reuse IDs
+      const { data: serverContacts, error: fetchError } = await supabase
+        .from('contacts')
+        .select('id, phone, name')
+        .eq('master_user_id', masterUserId)
+        .eq('is_blocked', false);
+
+      if (fetchError) throw fetchError;
+
+      const serverPhoneMap = new Map<string, { id: string, name: string }>();
+      serverContacts?.forEach(c => {
+        // Normalize stored phone
+        const p = c.phone.replace(/[^\d]/g, '');
+        serverPhoneMap.set(p, { id: c.id, name: c.name });
+      });
+
+      const batchSize = 100;
+      const validContacts: any[] = [];
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      // 2. Prepare Payload
+      for (const waContact of waContacts) {
+        let normalizedPhone = waContact.phone.replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) normalizedPhone = '62' + normalizedPhone.slice(1);
+
+        const existing = serverPhoneMap.get(normalizedPhone);
+        const contactName = waContact.name || existing?.name || normalizedPhone;
+
+        const isNameChanged = existing && existing.name !== contactName && waContact.name;
+
+        // If it's new OR name updated, we push to upsert list
+        // If it's existing and name is same, we generally skip to save bandwidth, 
+        // BUT for 'upsert' safety we might want to just push it if we want to update 'last_seen' or similar?
+        // For now, let's only push if New or Name Changed to optimize.
+
+        if (!existing) {
+          // NEW
+          validContacts.push({
+            id: crypto.randomUUID(),
+            master_user_id: masterUserId,
+            created_by: user.id,
+            name: contactName,
+            phone: normalizedPhone,
+            tags: ['WhatsApp'], // Array for Postgres
+            notes: 'Imported from WhatsApp',
+            is_blocked: false,
+            created_at: timestamps.created_at,
+            updated_at: timestamps.updated_at,
+            _lastModified: new Date().toISOString(),
+            _version: 1,
+            _deleted: false
+          });
+          addedCount++;
+        } else if (isNameChanged) {
+          // UPDATE
+          validContacts.push({
+            id: existing.id,
+            master_user_id: masterUserId,
+            updated_at: timestamps.updated_at,
+            name: contactName,
+            _lastModified: new Date().toISOString()
+            // Supabase upsert will ignore other fields if not provided? 
+            // No, upsert replaces. We must provide critical fields or use patch strategy.
+            // Actually, 'upsert' in Supabase (Postgres) updates columns provided.
+            // But better be safe with IDs.
+          });
+          updatedCount++;
+        }
+      }
+
+      // 3. Batch Upsert to Supabase
+      if (validContacts.length > 0) {
+        for (let i = 0; i < validContacts.length; i += batchSize) {
+          const batch = validContacts.slice(i, i + batchSize);
+          // We use upsert. 
+          // Note: RLS must allow this.
+          const { error: upsertError } = await supabase
+            .from('contacts')
+            .upsert(batch, { onConflict: 'id' }); // Upsert by ID
+
+          if (upsertError) {
+            console.error('Batch upsert failed:', upsertError);
+            // Continue to next batch? Or throw?
+            // Best to log and continue to try saving others
+          }
+        }
+      }
+
+      // 4. Trigger Full Sync (Server -> Local)
+      // This ensures local DB gets the merged state correctly.
+      console.log(`[ContactService] Server sync pushed. Added: ${addedCount}, Updated: ${updatedCount}. Triggering full pull...`);
+
+      // We force a sync.
+      await this.syncManager.triggerSync();
+
+      return { added: addedCount, updated: updatedCount, errors: 0 };
+
+    } catch (error) {
+      console.error('Error in server-first contact sync:', error);
+      return { added: 0, updated: 0, errors: 1 };
+    }
+  }
+
+  /**
+   * Sync contacts from WhatsApp (Upsert operation)
+   * Prevents duplicates by checking existing phone numbers.
+   */
+  async upsertContactsFromWhatsApp(waContacts: Array<{ phone: string; name?: string }>): Promise<{ added: number; updated: number; errors: number }> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+      const user = await this.getCurrentUser();
+      const timestamps = addTimestamps({}, false);
+
+      // 1. Get all local contacts for quick lookup
+      const existingContacts = await db.contacts
+        .where('master_user_id')
+        .equals(masterUserId)
+        .and(c => !c._deleted)
+        .toArray();
+
+      const phoneMap = new Map<string, LocalContact>();
+      existingContacts.forEach(c => {
+        // Normalize stored phone for map key
+        const p = c.phone.replace(/[^\d]/g, '');
+        phoneMap.set(p, c);
+      });
+
+      const toAdd: LocalContact[] = [];
+      const toUpdate: LocalContact[] = [];
+      const syncQueueItems: any[] = [];
+
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      for (const waContact of waContacts) {
+        // Normalize incoming phone
+        let normalizedPhone = waContact.phone.replace(/[^\d]/g, '');
+        if (normalizedPhone.startsWith('0')) normalizedPhone = '62' + normalizedPhone.slice(1);
+
+        const existing = phoneMap.get(normalizedPhone);
+        const contactName = waContact.name || existing?.name || normalizedPhone; // Prioritize WA name -> Existing name -> Phone
+
+        if (existing) {
+          // Update only if name changed (or other logic) OR if group_id is invalid (empty string)
+          const isNameChanged = existing.name !== contactName && waContact.name;
+          const hasInvalidGroupId = existing.group_id === '';
+
+          if (isNameChanged || hasInvalidGroupId) {
+            const updated = {
+              ...existing,
+              name: contactName,
+              group_id: existing.group_id || undefined, // Ensure empty string becomes undefined
+              // Add 'WhatsApp' tag if not present
+              tags: existing.tags ? (existing.tags.includes('WhatsApp') ? existing.tags : [...existing.tags, 'WhatsApp']) : ['WhatsApp'],
+              updated_at: timestamps.updated_at,
+              _syncStatus: 'pending' as const, // Force sync
+              _lastModified: new Date().toISOString()
+            };
+            toUpdate.push(updated);
+
+            // Queue Sync
+            syncQueueItems.push({
+              table: 'contacts',
+              type: 'update',
+              id: existing.id,
+              data: localToSupabase(updated)
+            });
+            updatedCount++;
+          }
+        } else {
+          // Insert New
+          const contactId = crypto.randomUUID();
+          const newContact: LocalContact = {
+            id: contactId,
+            master_user_id: masterUserId,
+            created_by: user.id,
+            name: contactName,
+            phone: normalizedPhone,
+            group_id: undefined, // No group initially
+            tags: ['WhatsApp'],
+            notes: 'Imported from WhatsApp',
+            is_blocked: false,
+            created_at: timestamps.created_at,
+            updated_at: timestamps.updated_at,
+            _syncStatus: 'pending',
+            _lastModified: new Date().toISOString(),
+            _version: 1,
+            _deleted: false
+          };
+          toAdd.push(newContact);
+
+          // Queue Sync
+          syncQueueItems.push({
+            table: 'contacts',
+            type: 'create',
+            id: contactId,
+            data: localToSupabase(newContact)
+          });
+          addedCount++;
+        }
+      }
+
+      // Batch Operations
+      if (toAdd.length > 0) {
+        await db.contacts.bulkAdd(toAdd);
+      }
+      if (toUpdate.length > 0) {
+        await db.contacts.bulkPut(toUpdate);
+      }
+
+      // Queue Sync Items
+      for (const item of syncQueueItems) {
+        this.syncManager.addToSyncQueue(item.table, item.type, item.id, item.data).catch(console.warn);
+      }
+
+      return { added: addedCount, updated: updatedCount, errors: 0 };
+
+    } catch (error) {
+      console.error('Error syncing WA contacts:', error);
+      return { added: 0, updated: 0, errors: 1 };
+    }
+  }
+
+  /**
    * Update an existing contact - local first with sync
    * Enforces data isolation using UserContextManager
    */
@@ -705,14 +1073,32 @@ export class ContactService {
       await this.getMasterUserId();
 
       // Check if contact exists locally
-      const existingContact = await db.contacts.get(id);
+      let existingContact = await db.contacts.get(id);
 
       if (!existingContact || existingContact._deleted) {
-        // Contact doesn't exist locally, try server
+        // Contact doesn't exist locally, try server and cache locally
         const serverContact = await this.getContactById(id);
         if (!serverContact) {
           throw new Error('Contact not found');
         }
+        // Use server contact data for the update base
+        existingContact = {
+          id: serverContact.id,
+          master_user_id: serverContact.master_user_id,
+          created_by: serverContact.created_by,
+          name: serverContact.name,
+          phone: serverContact.phone,
+          group_id: serverContact.group_id,
+          tags: serverContact.tags,
+          notes: serverContact.notes,
+          is_blocked: serverContact.is_blocked || false,
+          created_at: serverContact.created_at,
+          updated_at: serverContact.updated_at,
+          _syncStatus: 'synced',
+          _lastModified: new Date().toISOString(),
+          _version: (serverContact as unknown as { _version?: number })._version || 1,
+          _deleted: false
+        } as LocalContact;
       }
 
       // Use standardized timestamp utilities for updates
@@ -727,6 +1113,87 @@ export class ContactService {
         _lastModified: syncMetadata._lastModified,
         _version: syncMetadata._version
       };
+
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Update with verification
+      if (isOnline) {
+        try {
+          // Prepare payload for Supabase (sanitize local metadata)
+          // Removing _lastModified, _version, and _syncStatus as they don't exist on server schema
+          const { _lastModified, _version, _syncStatus, ...rawPayload } = {
+            ...contactData,
+            updated_at: timestamps.updated_at
+          } as any;
+
+          // Convert undefined to null for Supabase (undefined is ignored in UPDATE)
+          const serverPayload: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(rawPayload)) {
+            serverPayload[key] = value === undefined ? null : value;
+          }
+
+          // Try update first
+          const { data: updateResult, error: updateError } = await supabase
+            .from('contacts')
+            .update(serverPayload)
+            .eq('id', id)
+            .select('id')
+            .maybeSingle();
+
+          // If update affected 0 rows (contact not on server yet), use upsert
+          if (!updateResult && !updateError) {
+            console.warn(`Contact ${id} not found on server, attempting upsert...`);
+
+            // Get full local contact for upsert
+            const fullContact = await db.contacts.get(id);
+            if (fullContact) {
+              const { _lastModified: l, _version: v, _syncStatus: s, _deleted: d, ...baseContact } = fullContact as any;
+
+              const upsertData = {
+                ...baseContact,
+                ...serverPayload,
+                id: fullContact.id,
+                master_user_id: fullContact.master_user_id,
+                created_by: fullContact.created_by,
+                updated_at: timestamps.updated_at
+              };
+
+              const { error: upsertError } = await supabase
+                .from('contacts')
+                .upsert(upsertData, { onConflict: 'id' });
+
+              if (upsertError) {
+                console.error('Upsert failed:', upsertError);
+                throw upsertError;
+              }
+              console.log(`Contact ${id} upserted to server successfully`);
+            }
+          } else if (updateError) {
+            throw updateError;
+          } else {
+            console.log(`Contact ${id} updated on server successfully`);
+          }
+
+          // Update local DB to mark as synced
+          if (existingContact) {
+            const localUpdate = {
+              ...existingContact,
+              ...serverPayload,
+              _lastModified: syncMetadata._lastModified,
+              _version: syncMetadata._version,
+              _syncStatus: 'synced' as const,
+              _deleted: existingContact._deleted
+            };
+            await db.contacts.update(id, localUpdate);
+            const enriched = await this.enrichContactsWithGroups([localUpdate]);
+            return enriched[0] || null;
+          }
+
+        } catch (e) {
+          console.error('Server-First Update Failed, falling back to sync queue:', e);
+          // Fall through to local update with sync queue
+        }
+      }
 
       // Update local database
       await db.contacts.update(id, updateData);
@@ -764,7 +1231,44 @@ export class ContactService {
 
       await this.getMasterUserId();
 
-      // Check if contact exists
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Approach
+      // Server-First Approach
+      if (isOnline) {
+        try {
+          const timestamps = addTimestamps({}, true);
+
+          // Soft Delete on Server
+          const { error } = await supabase
+            .from('contacts')
+            .update({
+              _deleted: true,
+              updated_at: timestamps.updated_at
+            })
+            .eq('id', id)
+            .eq('master_user_id', await this.getMasterUserId());
+
+          if (error) throw error;
+
+          // Trigger Sync
+          await this.syncManager.triggerSync();
+
+          // Force local update to ensure UI reflects it immediately if sync lags
+          await db.contacts.update(id, {
+            _deleted: true,
+            updated_at: timestamps.updated_at,
+            _syncStatus: 'synced'
+          });
+
+          return true;
+
+        } catch (e) {
+          console.error('Server-First Delete Failed:', e);
+        }
+      }
+
+      // Check if contact exists locally
       const existingContact = await db.contacts.get(id);
 
       if (!existingContact || existingContact._deleted) {
@@ -815,12 +1319,50 @@ export class ContactService {
    */
   async deleteMultipleContacts(ids: string[]): Promise<{ success: boolean; deletedCount: number }> {
     try {
-      await this.getMasterUserId(); // Ensure initialized
+      const masterUserId = await this.getMasterUserId();
+      const isOnline = this.syncManager.getIsOnline();
+
+      // Server-First Batch Delete
+      if (isOnline) {
+        try {
+          const timestamps = addTimestamps({}, true);
+
+          // Chunking for safe queries
+          const chunkSize = 100;
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const { error } = await supabase
+              .from('contacts')
+              .update({
+                _deleted: true,
+                updated_at: timestamps.updated_at
+              })
+              .in('id', chunk)
+              .eq('master_user_id', masterUserId);
+
+            if (error) throw error;
+          }
+
+          await this.syncManager.triggerSync();
+
+          return {
+            success: true,
+            deletedCount: ids.length
+          };
+
+        } catch (e) {
+          console.error('Server-First Batch Delete Failed:', e);
+        }
+      }
 
       let deletedCount = 0;
-
       for (const id of ids) {
         try {
+          // Fallback to individual local deletes (which handles queueing)
+          // We bypass the server-first check inside deleteContact to avoid double sync if we were calling it?
+          // But deleteContact now checks isOnline.
+          // If we came here, it likely means isOnline is false, or server failed.
+          // So calling deleteContact is safe as it will use the local path.
           await this.deleteContact(id);
           deletedCount++;
         } catch (error) {

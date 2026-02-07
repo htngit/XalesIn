@@ -240,12 +240,12 @@ export function LoginPage({ onLoginSuccess, initialView = 'login' }: LoginPagePr
                   <div className="flex justify-center mb-4">
                     <img
                       src="icon.png"
-                      alt="Xender-In Logo"
+                      alt="XalesIn Logo"
                       className="h-20 w-20 object-contain drop-shadow-lg"
                     />
                   </div>
                   <CardTitle className="text-3xl font-bold text-white">
-                    <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
+                    <FormattedMessage id="common.app.name" defaultMessage="XalesIn" />
                   </CardTitle>
                   <CardDescription className="text-white/80">
                     <FormattedMessage id="auth.login.subtitle" defaultMessage="Sign in to your WhatsApp automation account" />
@@ -363,7 +363,7 @@ export function LoginPage({ onLoginSuccess, initialView = 'login' }: LoginPagePr
                     <FormattedMessage id="auth.register.title" defaultMessage="Create Account" />
                   </CardTitle>
                   <CardDescription className="text-white/80">
-                    <FormattedMessage id="auth.register.subtitle" defaultMessage="Join Xender-In WhatsApp Automation" />
+                    <FormattedMessage id="auth.register.subtitle" defaultMessage="Join XalesIn WhatsApp Automation" />
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

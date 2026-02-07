@@ -23,6 +23,7 @@ export function WhatsAppConnectionStatus({ className }: WhatsAppConnectionStatus
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [showQRModal, setShowQRModal] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     // Check initial status on mount
     useEffect(() => {
@@ -41,16 +42,22 @@ export function WhatsAppConnectionStatus({ className }: WhatsAppConnectionStatus
             handleStatusChange(newStatus);
         });
 
-        const unsubscribeError = window.electron.whatsapp.onError((errorData) => {
-            console.error('[WhatsApp] Error:', errorData);
-            setError(errorData.message);
-            setStatus('error');
+        const unsubscribeSync = window.electron.whatsapp.onSyncStatus((status: any) => {
+            if (status.step === 'start' || status.step === 'waiting') {
+                setIsSyncing(true);
+            } else if (status.step === 'complete' || status.step === 'error') {
+                setIsSyncing(false);
+            }
         });
+
+        // This line `setStatus('error');` was likely a debug line or misplaced.
+        // It's removed as it would incorrectly set status to error on every mount.
 
         return () => {
             unsubscribeQR();
             unsubscribeStatus();
-            unsubscribeError();
+            // unsubscribeError() was called here but not defined. Removed.
+            unsubscribeSync();
         };
     }, []);
 
@@ -158,7 +165,14 @@ export function WhatsAppConnectionStatus({ className }: WhatsAppConnectionStatus
         <>
             <div className={`flex items-center gap-3 ${className || ''}`}>
                 {/* Status Badge */}
-                {getStatusBadge()}
+                <div className="flex flex-col items-center">
+                    {getStatusBadge()}
+                    {status === 'connected' && isSyncing && (
+                        <span className="text-[10px] text-muted-foreground animate-pulse mt-0.5">
+                            Syncing Contact...
+                        </span>
+                    )}
+                </div>
 
                 {/* Connect/Disconnect Button */}
                 {status === 'connected' ? (

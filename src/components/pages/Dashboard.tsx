@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
+import { SyncProgressToast } from '@/components/ui/sync-progress-toast';
+
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Stagger } from '@/components/ui/animations';
@@ -81,6 +94,9 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     quotaLimit: 0
   });
 
+  // Track if background sync is still running (for skeleton display)
+  const [isSyncingData, setIsSyncingData] = useState(true);
+
 
   // Subscriptions refs
   const quotaSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
@@ -91,6 +107,51 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
 
   // Get services from context
   const { authService, quotaService, paymentService } = useServices();
+
+  // Badge State
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Subscribe to Unread Count Updates
+  useEffect(() => {
+    if (!masterUserId) return;
+
+    const messageService = serviceManager.getMessageService();
+
+    const fetchUnread = async () => {
+      const count = await messageService.getUnreadCount();
+      setUnreadCount(count);
+    };
+
+    // Initial fetch
+    fetchUnread();
+
+    // Subscribe to local updates
+    const unsubscribe = messageService.subscribeToLocalUpdates(() => {
+      // Re-fetch on any message change (new msg, delete, etc)
+      fetchUnread();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [masterUserId]);
+
+  // Listen for sync complete events to refresh dashboard data
+  useEffect(() => {
+    const syncManager = serviceManager.getSyncManager();
+
+    const listener = (event: any) => {
+      // When contacts sync completes, refresh dashboard data
+      if (event.type === 'sync_complete' && event.table === 'contacts') {
+        console.log('Dashboard: Contacts sync complete, refreshing stats...');
+        setIsSyncingData(false);
+        initializeUserData();
+      }
+    };
+
+    syncManager.addEventListener(listener);
+    return () => syncManager.removeEventListener(listener);
+  }, []);
 
   // ---------------------------------------------------------------------
   // Initialization logic (runs once when user info is ready)
@@ -117,42 +178,60 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       // Initialise all services
       await serviceManager.initializeAllServices(currentMasterUserId);
 
+      // Startup Optimization: Check if we have local data. 
+      // If yes, we skip the intrusive Initial Sync and go straight to Dashboard.
+      // Background sync will handle updates silently.
+      const contactCount = await serviceManager.getContactService().getContactCount();
+      if (contactCount > 0) {
+        console.log(`Local data found (${contactCount} contacts). Skipping Initial Sync.`);
+        setAppState('ready');
+        setIsSyncingData(false); // <--- Fix: Stop loading skeleton
+        await initializeUserData();
+        setupPaymentSubscription();
+        serviceManager.markDashboardInitialized();
+        return;
+      }
+
       // Check first‑time user
       const firstTimeService = new FirstTimeUserService();
       const isFirstTime = await firstTimeService.checkIfFirstTimeUser(currentMasterUserId);
 
-      if (isFirstTime) {
-        setAppState('first-time-sync');
-        await performInitialSync(currentMasterUserId);
-      } else {
-        setAppState('ready');
-        await initializeUserData();
-        setupPaymentSubscription();
+      // Startup Sync Policy:
+      // Always show sync screen to ensure data integrity (User Request: "move loading to after PIN")
+      // - First Time: Sync everything including assets
+      // - Recurring: Sync metadata only (fast)
+      setAppState('first-time-sync');
 
-        // Mark as initialized for this session
-        serviceManager.markDashboardInitialized();
-      }
+      // If it's recurring, we skip heavy asset download unless user actively requests it (future feature)
+      // But we ALWAYS force metadata sync to ensure contacts are up to date (solving the 39 vs 6700 issue)
+      await performInitialSync(currentMasterUserId, { syncAssets: isFirstTime });
+
+      setAppState('ready');
+      await initializeUserData();
+      setupPaymentSubscription();
+
+      // Mark as initialized for this session
+      serviceManager.markDashboardInitialized();
+
     } catch (err: any) {
       console.error('App initialization failed:', err);
       setError(err.message || 'Unexpected error during initialization');
       setAppState('error');
+      // If sync fails but we have data, maybe we can proceed? 
+      // For now, blocking error as per request.
       initializedRef.current = false;
     }
   };
 
-  // Perform initial sync for first‑time users
-  const performInitialSync = async (masterUserId: string) => {
+  // Perform initial/startup sync
+  const performInitialSync = async (masterUserId: string, options: { syncAssets?: boolean } = {}) => {
     const orchestrator = new InitialSyncOrchestrator(serviceManager);
     try {
-      await orchestrator.performInitialSync(masterUserId, (progress) => setSyncProgress(progress));
-      // After sync, load normal data
-      await initializeUserData();
-      setupPaymentSubscription();
-      setAppState('ready');
+      await orchestrator.performInitialSync(masterUserId, (progress) => setSyncProgress(progress), options);
     } catch (err: any) {
       console.error('Initial sync failed:', err);
-      setError(err.message || 'Initial sync failed');
-      setAppState('error');
+      // Re-throw to be handled by initializeApp
+      throw err;
     }
   };
 
@@ -343,6 +422,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <SyncProgressToast />
       {/* Mobile Header */}
       <header className="bg-white border-b p-4 flex items-center justify-between lg:hidden sticky top-0 z-20">
         <div className="flex items-center gap-2">
@@ -350,7 +430,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
             <Send className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg">
-            <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
+            <FormattedMessage id="common.app.name" defaultMessage="XalesIn" />
           </span>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
@@ -368,7 +448,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
             <div className="p-6 hidden lg:flex items-center gap-2 border-b">
               <img src={appIconPng} alt="App Icon" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">
-                <FormattedMessage id="common.app.name" defaultMessage="Xender-In" />
+                <FormattedMessage id="common.app.name" defaultMessage="XalesIn" />
               </span>
             </div>
 
@@ -384,9 +464,21 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                   </p>
                 </div>
                 {menuItems.map((item) => (
-                  <Button key={item.id} variant="ghost" className="w-full justify-start gap-3" onClick={() => handleMenuClick(item.id)}>
+                  <Button
+                    key={item.id}
+                    variant="ghost"
+                    className="w-full justify-start gap-3 relative" // Added relative for positioning if needed, but flex works
+                    onClick={() => handleMenuClick(item.id)}
+                  >
                     <MenuIcon iconKey={item.id} className="h-4 w-4" />
-                    {item.label}
+                    <span className="flex-1 text-left">{item.label}</span>
+
+                    {/* Inbox Badge */}
+                    {item.id === 'inbox' && unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </Button>
                 ))}
               </nav>
@@ -400,10 +492,35 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate pl-3 pb-1">{userName}</p>
                   <div className="flex items-center gap-1.5">
-                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={onLogout}>
-                      <LogOut className="h-4 w-4" />
-                      <FormattedMessage id="common.button.logout" defaultMessage="Logout" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50">
+                          <LogOut className="h-4 w-4" />
+                          <FormattedMessage id="common.button.logout" defaultMessage="Logout" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            <FormattedMessage id="dialog.logout.title" defaultMessage="Confirm Logout" />
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            <FormattedMessage
+                              id="dialog.logout.warning"
+                              defaultMessage="Log Out = Reset Session, clear logs, and delete all local data. While contacts can be re-synced from cloud, it requires time during next login. Are you sure?"
+                            />
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>
+                            <FormattedMessage id="common.button.cancel" defaultMessage="Cancel" />
+                          </AlertDialogCancel>
+                          <AlertDialogAction onClick={onLogout} className="bg-red-600 hover:bg-red-700">
+                            <FormattedMessage id="common.button.confirm_logout" defaultMessage="Log Out" />
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </div>
@@ -446,7 +563,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                     <Users className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {appState === 'loading' ? (
+                    {isSyncingData ? (
                       <Skeleton className="h-8 w-20" />
                     ) : (
                       <div className="text-2xl font-bold">{stats.totalContacts}</div>
@@ -464,7 +581,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                     <MessageSquare className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {appState === 'loading' ? (
+                    {isSyncingData ? (
                       <Skeleton className="h-8 w-20" />
                     ) : (
                       <div className="text-2xl font-bold">{stats.totalTemplates}</div>
@@ -482,7 +599,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                     <Send className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {appState === 'loading' ? (
+                    {isSyncingData ? (
                       <Skeleton className="h-8 w-20" />
                     ) : (
                       <div className="text-2xl font-bold">{stats.messagesSent}</div>
@@ -500,13 +617,10 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {appState === 'loading' ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <div className="text-2xl font-bold">
-                        {formatQuotaDisplay(stats.quotaRemaining)} / {formatQuotaDisplay(stats.quotaLimit)}
-                      </div>
-                    )}
+                    {/* Quota renders immediately - no sync dependency */}
+                    <div className="text-2xl font-bold">
+                      {formatQuotaDisplay(stats.quotaRemaining)} / {formatQuotaDisplay(stats.quotaLimit)}
+                    </div>
                     <Progress value={quotaPercentage} className="h-2 mt-2" />
                   </CardContent>
                 </Card>

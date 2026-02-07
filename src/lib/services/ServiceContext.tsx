@@ -9,6 +9,7 @@ import { QuotaService } from './QuotaService';
 import { AuthService } from './AuthService';
 import { PaymentService } from './PaymentService';
 import { MessageService } from './MessageService';
+import { userContextManager } from '../security/UserContextManager';
 
 interface ServiceContextType {
   templateService: TemplateService;
@@ -35,27 +36,64 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // If we think we're ready, do nothing (wait for error handler to reset us if wrong)
-    if (isReady) return;
+    let mounted = true;
 
-    // Check if services are already initialized
-    if (serviceManager.isInitialized()) {
-      setIsReady(true);
-      return;
-    }
+    const initializeServices = async () => {
+      // If already initialized globally, just update state
+      if (serviceManager.isInitialized()) {
+        if (mounted) setIsReady(true);
+        return;
+      }
 
-    // If not, wait for initialization with polling
-    console.warn('ServiceProvider waiting for services to initialize...');
+      // If not initialized, WE must trigger it because we're blocking children from doing it.
+      // This fixes the deadlock where ServiceProvider waits for Dashboard, but Dashboard is blocked by ServiceProvider.
+      try {
+        console.log('ServiceProvider: Triggering service initialization...');
+        // We need masterUserId. Get it from context or auth service.
+        // Since we are in ProtectedRoutes, user should be logged in.
+        const authService = new AuthService();
+        const user = await authService.getCurrentUser();
+
+        if (user && user.master_user_id) {
+          await serviceManager.initializeAllServices(user.master_user_id);
+          if (mounted) setIsReady(true);
+        } else {
+          // If we can't get user, we can't initialize. 
+          // But maybe we are in a state where we verify PIN?
+          // Actually ProtectedRoutes implies authData is present.
+          console.warn('ServiceProvider: Could not find masterUserId to initialize services.');
+          // We keep polling in case another component (like PINModal side effects) does it?
+          // But PINModal sets data then renders ProtectedRoutes.
+
+          // Fallback: Check standard UserContextManager
+          const currentMasterId = await userContextManager.getCurrentMasterUserId();
+          if (currentMasterId) {
+            await serviceManager.initializeAllServices(currentMasterId);
+            if (mounted) setIsReady(true);
+          }
+        }
+      } catch (err) {
+        console.error('ServiceProvider: Initialization failed:', err);
+      }
+    };
+
+    initializeServices();
+
+    // Fallback polling (keep existing logic just in case)
     const checkInterval = setInterval(() => {
       if (serviceManager.isInitialized()) {
-        console.log('Services initialized, ServiceProvider ready');
-        setIsReady(true);
+        if (mounted) {
+          console.log('Services initialized (polling detected), ServiceProvider ready');
+          setIsReady(true);
+        }
         clearInterval(checkInterval);
       }
-    }, 100); // Check every 100ms
+    }, 500); // Relax polling to 500ms
 
-    // Cleanup on unmount or when dependencies change
-    return () => clearInterval(checkInterval);
+    return () => {
+      mounted = false;
+      clearInterval(checkInterval);
+    };
   }, [isReady]);
 
   // Show loading state while waiting for services

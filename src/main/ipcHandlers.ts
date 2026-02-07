@@ -78,7 +78,9 @@ export const setupIPC = (
                 throw new Error('WhatsAppManager not initialized');
             }
 
-            await whatsappManager.disconnect();
+            // User requested disconnect -> Check if we should clear session
+            // Default behavior for manual disconnect is usually to logout/clear session
+            await whatsappManager.disconnect(true);
             return { success: true };
         } catch (error) {
             console.error('[IPC] whatsapp:disconnect error:', error);
@@ -155,6 +157,50 @@ export const setupIPC = (
         } catch (error) {
             console.error('[IPC] whatsapp:get-client-info error:', error);
             return null;
+        }
+    });
+
+    /**
+     * Resync Contacts
+     */
+    ipcMain.handle('whatsapp:resync-contacts', async () => {
+        try {
+            console.log('[IPC] whatsapp:resync-contacts called');
+
+            if (!whatsappManager) {
+                throw new Error('WhatsAppManager not initialized');
+            }
+
+            const success = await whatsappManager.resyncContacts();
+            return { success };
+        } catch (error) {
+            console.error('[IPC] whatsapp:resync-contacts error:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    /**
+     * Fetch History
+     */
+    ipcMain.handle('whatsapp:fetch-history', async () => {
+        try {
+            console.log('[IPC] whatsapp:fetch-history called');
+
+            if (!whatsappManager) {
+                throw new Error('WhatsAppManager not initialized');
+            }
+
+            const success = await whatsappManager.fetchHistory();
+            return { success };
+        } catch (error) {
+            console.error('[IPC] whatsapp:fetch-history error:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
         }
     });
 

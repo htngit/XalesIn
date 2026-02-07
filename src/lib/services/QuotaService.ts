@@ -52,11 +52,8 @@ export class QuotaService {
     this.syncManager.startAutoSync();
 
     // Initial sync with error handling
-    try {
-      await this.syncManager.triggerSync();
-    } catch (error) {
-      console.warn('Initial sync failed, will retry later:', error);
-    }
+    // this.syncManager.triggerSync().catch(...) -> Removed to prevent blocking initialization
+    // Initial sync is now handled by InitialSyncOrchestrator
   }
 
   /**

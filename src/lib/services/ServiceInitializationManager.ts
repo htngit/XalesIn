@@ -111,6 +111,9 @@ export class ServiceInitializationManager {
     this.initializationPromise = (async () => {
       try {
         // Initialize SyncManager first
+        if (this.syncManager) {
+          this.syncManager.destroy();
+        }
         this.syncManager = new SyncManager();
 
         // Initialize in dependency order
@@ -300,6 +303,12 @@ export class ServiceInitializationManager {
     this.messageService = new MessageService(this.syncManager);
     // MessageService does not have an initialize method yet, or if it does, call it here.
     // Based on previous code, it only needs constructor. 
+  }
+  public getSyncManager(): SyncManager {
+    if (!this.syncManager) {
+      throw new Error('SyncManager not initialized. Call initializeAllServices first.');
+    }
+    return this.syncManager;
   }
 }
 

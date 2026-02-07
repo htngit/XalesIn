@@ -86,19 +86,19 @@ serve(async (req) => {
         const pageWidth = doc.internal.pageSize.getWidth();
 
         // Company Logo (centered)
-        const logoUrl = 'https://xasuqqebngantzaenmwq.supabase.co/storage/v1/object/public/assets/branding/Xenderin%20Logo.png';
+        const logoUrl = 'https://xasuqqebngantzaenmwq.supabase.co/storage/v1/object/public/assets/branding/XalesIn%20Logo.png';
         // Note: jsPDF in Deno might not support image loading from URL directly
         // For now, we'll use text-based header
 
         // Header
         doc.setFontSize(24);
         doc.setFont('helvetica', 'bold');
-        doc.text('XENDER-IN', pageWidth / 2, 20, { align: 'center' });
+        doc.text('XALESIN', pageWidth / 2, 20, { align: 'center' });
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text('WhatsApp Automation Platform', pageWidth / 2, 28, { align: 'center' });
-        doc.text('support@xenderin.com', pageWidth / 2, 34, { align: 'center' });
+        doc.text('support@xalesin.com', pageWidth / 2, 34, { align: 'center' });
 
         // Invoice Title
         doc.setFontSize(20);

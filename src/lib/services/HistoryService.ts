@@ -79,9 +79,10 @@ export class HistoryService {
     this.syncManager.startAutoSync();
 
     // Initial sync with error handling (non-blocking)
-    this.syncManager.triggerSync().catch(error => {
-      console.warn('Initial sync failed, will retry later:', error);
-    });
+    // this.syncManager.triggerSync().catch(error => {
+    //   console.warn('Initial sync failed, will retry later:', error);
+    // });
+    // Initial sync is now handled by InitialSyncOrchestrator
   }
 
 
@@ -91,9 +92,10 @@ export class HistoryService {
   private async backgroundSyncHistory(): Promise<void> {
     try {
       // Don't await this to avoid blocking the main operation
-      this.syncManager.triggerSync().catch(error => {
-        console.warn('Background sync failed:', error);
-      });
+      // this.syncManager.triggerSync().catch(error => {
+      //   console.warn('Background sync failed:', error);
+      // });
+      // Initial sync is now handled by InitialSyncOrchestrator
     } catch (error) {
       console.warn('Failed to trigger background sync:', error);
     }

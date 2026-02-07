@@ -1,6 +1,6 @@
 /**
  * Comprehensive timestamp utilities for consistent handling between Dexie (Date objects) 
- * and Supabase (ISO strings) in the XenderIn database sync system.
+ * and Supabase (ISO strings) in the XalesIn database sync system.
  * 
  * This utility addresses critical timestamp format inconsistencies that cause sync failures
  * by providing standardized conversion functions and metadata management.

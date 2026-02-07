@@ -17,7 +17,20 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['whatsapp-web.js', 'puppeteer', 'qrcode-terminal']
+              external: [
+                'puppeteer',
+                'qrcode-terminal',
+                'pino',
+                'sharp',
+                'bufferutil',
+                'utf-8-validate'
+              ]
+            }
+          },
+          resolve: {
+            alias: {
+              // Ensure libsignal is resolved correctly during bundling
+              'libsignal': path.resolve(__dirname, 'node_modules/libsignal')
             }
           }
         }

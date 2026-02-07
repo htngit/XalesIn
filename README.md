@@ -1,4 +1,4 @@
-# 🚀 Xender-In - Local-First WhatsApp Automation App
+# 🚀 XalesIn - Local-First WhatsApp Automation App
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.0+-61dafb.svg)](https://reactjs.org/)
@@ -6,7 +6,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4.0+-38b2ac.svg)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Enabled-3ecf8e.svg)](https://supabase.com/)
 
-**Xender-In** is a local-first WhatsApp automation application that prioritizes user privacy and data control. The app runs WhatsApp automation fully on the user's device while using Supabase only for authentication, metadata, and quota management.
+**XalesIn** is a local-first WhatsApp automation application that prioritizes user privacy and data control. The app runs WhatsApp automation fully on the user's device while using Supabase only for authentication, metadata, and quota management.
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## 🎯 Project Overview
 
-Xender-In follows a **local-first architecture** where:
+XalesIn follows a **local-first architecture** where:
 - **Runtime execution** happens locally on the user's device via `whatsapp-web.js` and Puppeteer
 - **Supabase** acts as a meta-disk for authentication, metadata, quota control, and activity logging
 - **No backend dependency** for core functionality
@@ -125,7 +125,7 @@ Xender-In follows a **local-first architecture** where:
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd xenderin
+   cd XalesIn
    ```
 
 2. **Install dependencies**
@@ -229,7 +229,7 @@ src/
 ### Data Isolation Strategy
 ```
 Per-User Data Directory:
-%AppData%/Xender-In/{user_id}/
+%AppData%/XalesIn/{user_id}/
 ├── session/              # WhatsApp session data
 ├── dexie-db/            # Local IndexedDB
 └── assets/              # User assets and media

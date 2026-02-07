@@ -13,6 +13,7 @@ import { Upload, Download, AlertCircle, CheckCircle2, Loader2, Info } from 'luci
 import { generateContactTemplate, parseContactsXLS, type ParsedContact } from '@/lib/utils/xlsHandler';
 import { useServices } from '@/lib/services/ServiceContext';
 import { toast } from '@/hooks/use-toast';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 
 interface UploadContactsDialogProps {
@@ -50,6 +51,7 @@ const clearStorage = () => {
 };
 
 export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadContactsDialogProps) {
+    const intl = useIntl();
     const { contactService, groupService } = useServices();
     const [file, setFile] = useState<File | null>(null);
     const [isParsing, setIsParsing] = useState(false);
@@ -113,7 +115,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
         try {
             const contacts = await parseContactsXLS(selectedFile);
             if (contacts.length === 0) {
-                setError('No valid contacts found in the file. Please check the template.');
+                setError(intl.formatMessage({ id: 'contacts.upload.error.no_contacts' }));
             } else {
                 // Validate phone numbers
                 const { invalid } = validateContacts(contacts);
@@ -132,7 +134,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             }
         } catch (err) {
             console.error('Error parsing file:', err);
-            setError('Failed to parse file. Please ensure it matches the template format.');
+            setError(intl.formatMessage({ id: 'contacts.upload.error.parse_failed' }));
         } finally {
             setIsParsing(false);
         }
@@ -158,7 +160,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             // Re-validate just in case to be safe, though proceedWithValidContacts should have handled it
             const { valid } = validateContacts(currentContacts);
             if (valid.length === 0) {
-                setError('No valid contacts to import.');
+                setError(intl.formatMessage({ id: 'contacts.upload.error.no_valid' }));
                 setVerifyingGroups(false);
                 return;
             }
@@ -186,7 +188,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             }
         } catch (error) {
             console.error('Error verifying groups:', error);
-            setError('Failed to verify groups. Please try again.');
+            setError(intl.formatMessage({ id: 'common.error' }));
         } finally {
             setVerifyingGroups(false);
         }
@@ -207,7 +209,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
 
         if (valid.length === 0) {
             console.error('No valid contacts to upload - localStorage is empty or all invalid!');
-            setError('No valid contacts to upload. Please re-select your file.');
+            setError(intl.formatMessage({ id: 'contacts.upload.error.reselect' }));
             return;
         }
 
@@ -233,7 +235,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                         const newGroup = await groupService.createGroup({
                             name: groupName,
                             color: '#3b82f6', // Default blue
-                            description: 'Created via bulk upload'
+                            description: intl.formatMessage({ id: 'contacts.upload.groups.created_desc', defaultMessage: 'Created via bulk upload' })
                         });
                         console.log(`Created group: ${groupName} -> ${newGroup.id}`);
                         groups.push(newGroup); // Add to our local groups array
@@ -296,8 +298,8 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             if (result.success) {
                 console.log('Contacts created successfully. Triggering sync...');
                 toast({
-                    title: "Upload Successful",
-                    description: `Successfully imported ${result.created} contacts. Sync started.`,
+                    title: intl.formatMessage({ id: 'contacts.notification.upload_success' }),
+                    description: intl.formatMessage({ id: 'contacts.upload.ready' }, { count: result.created }),
                 });
 
                 // Clear localStorage on success
@@ -310,7 +312,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             }
         } catch (err) {
             console.error('Upload failed:', err);
-            setError('An unexpected error occurred during upload.');
+            setError(intl.formatMessage({ id: 'common.error' }));
         } finally {
             setIsUploading(false);
         }
@@ -338,10 +340,9 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
             <AlertDialog open={open} onOpenChange={handleClose}>
                 <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Import Contacts</AlertDialogTitle>
+                        <AlertDialogTitle><FormattedMessage id="contacts.upload.title" defaultMessage="Import Contacts" /></AlertDialogTitle>
                         <AlertDialogDescription>
-                            Upload an Excel or CSV file to import contacts in bulk.
-                            Supported formats: .xlsx, .xls, .csv
+                            <FormattedMessage id="contacts.upload.description" defaultMessage="Upload an Excel or CSV file to import contacts in bulk. Supported formats: .xlsx, .xls, .csv" />
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
@@ -349,7 +350,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" onClick={generateContactTemplate} className="w-full">
                                 <Download className="mr-2 h-4 w-4" />
-                                Download Template
+                                <FormattedMessage id="contacts.upload.template.button" defaultMessage="Download Template" />
                             </Button>
                         </div>
 
@@ -371,11 +372,11 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                                                 <span className="font-semibold text-green-600">{file.name}</span>
                                             ) : (
                                                 <>
-                                                    <span className="font-semibold">Click to upload</span> or drag and drop
+                                                    <span className="font-semibold"><FormattedMessage id="contacts.upload.dropzone.click" defaultMessage="Click to upload" /></span> <FormattedMessage id="contacts.upload.dropzone.drag" defaultMessage="or drag and drop" />
                                                 </>
                                             )}
                                         </p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">XLSX, XLS or CSV</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400"><FormattedMessage id="contacts.upload.dropzone.formats" defaultMessage="XLSX, XLS or CSV" /></p>
                                     </div>
                                     <input
                                         ref={fileInputRef}
@@ -399,13 +400,13 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
 
                         <div className="text-sm text-muted-foreground">
                             {isParsing ? (
-                                <p>Parsing file...</p>
+                                <p><FormattedMessage id="contacts.upload.parsing" defaultMessage="Parsing file..." /></p>
                             ) : (
                                 <div>
                                     {parsedContacts.length > 0 && !error && (
                                         <div className="flex items-center gap-2 text-green-600">
                                             <CheckCircle2 className="h-4 w-4" />
-                                            <p>Ready to import <strong>{parsedContacts.length}</strong> contacts</p>
+                                            <p><FormattedMessage id="contacts.upload.ready" defaultMessage="Ready to import {count} contacts" values={{ count: <strong>{parsedContacts.length}</strong> }} /></p>
                                         </div>
                                     )}
                                 </div>
@@ -414,7 +415,7 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                     </div>
 
                     <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isUploading || verifyingGroups}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={isUploading || verifyingGroups}><FormattedMessage id="common.button.cancel" defaultMessage="Cancel" /></AlertDialogCancel>
                         <Button
                             onClick={verifyGroups}
                             disabled={!file || isParsing || !!error || isUploading || parsedContacts.length === 0 || verifyingGroups || showValidationConfirm}
@@ -423,10 +424,10 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                             {isUploading || verifyingGroups ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    {isUploading ? 'Importing...' : 'Verifying...'}
+                                    {isUploading ? intl.formatMessage({ id: 'contacts.upload.importing' }) : intl.formatMessage({ id: 'contacts.upload.verifying' })}
                                 </>
                             ) : (
-                                'Import Contacts'
+                                <FormattedMessage id="contacts.upload.title" defaultMessage="Import Contacts" />
                             )}
                         </Button>
                     </AlertDialogFooter>
@@ -439,35 +440,35 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                     <AlertDialogHeader>
                         <div className="flex items-center gap-2 text-red-600 mb-2">
                             <AlertCircle className="h-5 w-5" />
-                            <AlertDialogTitle>Invalid Phone Numbers Detected</AlertDialogTitle>
+                            <AlertDialogTitle><FormattedMessage id="contacts.upload.validation.title" defaultMessage="Invalid Phone Numbers Detected" /></AlertDialogTitle>
                         </div>
                         <AlertDialogDescription className="space-y-4">
                             <p>
-                                The following contacts have invalid phone numbers (must start with '+'):
+                                <FormattedMessage id="contacts.upload.validation.desc" defaultMessage="The following contacts have invalid phone numbers (must start with '+'):" />
                             </p>
                             <div className="bg-muted p-3 rounded-md max-h-[150px] overflow-y-auto">
                                 <ul className="list-disc pl-5 text-sm space-y-1">
                                     {invalidContacts.map((contact, index) => (
                                         <li key={index}>
-                                            <span className="font-medium">{contact.name || 'Unknown'}</span>:
+                                            <span className="font-medium">{contact.name || intl.formatMessage({ id: 'common.na', defaultMessage: 'N/A' })}</span>:
                                             <span className="text-red-500 ml-1">{contact.phone}</span>
                                         </li>
                                     ))}
                                 </ul>
                             </div>
                             <div className="text-sm border-l-4 border-amber-500 pl-3 py-1 bg-amber-50 dark:bg-amber-900/10 text-amber-800 dark:text-amber-200">
-                                <p className="font-semibold">Action Required:</p>
-                                <p>You can proceed to import only the <strong>{parsedContacts.length - invalidContacts.length}</strong> valid contacts, or cancel to fix your file.</p>
+                                <p className="font-semibold"><FormattedMessage id="contacts.upload.validation.action_required" defaultMessage="Action Required:" /></p>
+                                <p><FormattedMessage id="contacts.upload.validation.proceed_hint" defaultMessage="You can proceed to import only the {count} valid contacts, or cancel to fix your file." values={{ count: <strong>{parsedContacts.length - invalidContacts.length}</strong> }} /></p>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={handleClose}>Cancel Upload</AlertDialogCancel>
+                        <AlertDialogCancel onClick={handleClose}><FormattedMessage id="contacts.upload.validation.cancel_button" defaultMessage="Cancel Upload" /></AlertDialogCancel>
                         <Button
                             onClick={proceedWithValidContacts}
                             className="bg-amber-600 hover:bg-amber-700 text-white"
                         >
-                            Proceed with Valid Only
+                            <FormattedMessage id="contacts.upload.validation.proceed_button" defaultMessage="Proceed with Valid Only" />
                         </Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -479,11 +480,11 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                     <AlertDialogHeader>
                         <div className="flex items-center gap-2 text-amber-600 mb-2">
                             <Info className="h-5 w-5" />
-                            <AlertDialogTitle>New Groups Detected</AlertDialogTitle>
+                            <AlertDialogTitle><FormattedMessage id="contacts.upload.groups.title" defaultMessage="New Groups Detected" /></AlertDialogTitle>
                         </div>
                         <AlertDialogDescription className="space-y-4">
                             <p>
-                                The following groups do not exist in your database:
+                                <FormattedMessage id="contacts.upload.groups.desc" defaultMessage="The following groups do not exist in your database:" />
                             </p>
                             <div className="bg-muted p-3 rounded-md max-h-[150px] overflow-y-auto">
                                 <ul className="list-disc pl-5 text-sm">
@@ -493,15 +494,15 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                                 </ul>
                             </div>
                             <p>
-                                Do you want to create these groups automatically?
+                                <FormattedMessage id="contacts.upload.groups.question" defaultMessage="Do you want to create these groups automatically?" />
                                 <br />
-                                <span className="text-xs text-muted-foreground">If you choose "No", the upload will be cancelled so you can correct your file.</span>
+                                <span className="text-xs text-muted-foreground"><FormattedMessage id="contacts.upload.groups.no_hint" defaultMessage="If you choose 'No', the upload will be cancelled so you can correct your file." /></span>
                             </p>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel onClick={() => { setShowGroupConfirm(false); clearStorage(); }} disabled={isUploading}>
-                            No, Cancel Upload
+                            <FormattedMessage id="contacts.upload.groups.cancel_button" defaultMessage="No, Cancel Upload" />
                         </AlertDialogCancel>
                         <Button
                             className="bg-green-600 hover:bg-green-700 text-white"
@@ -511,10 +512,10 @@ export function UploadContactsDialog({ open, onOpenChange, onSuccess }: UploadCo
                             {isUploading ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    Creating Groups...
+                                    {intl.formatMessage({ id: 'contacts.upload.groups.creating', defaultMessage: 'Creating Groups...' })}
                                 </>
                             ) : (
-                                'Yes, Create Groups & Import'
+                                intl.formatMessage({ id: 'contacts.upload.groups.confirm_button', defaultMessage: 'Yes, Create Groups & Import' })
                             )}
                         </Button>
                     </AlertDialogFooter>

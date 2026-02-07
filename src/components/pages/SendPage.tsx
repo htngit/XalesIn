@@ -3,6 +3,7 @@ import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
+import { cn } from '@/lib/utils';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
@@ -17,7 +18,17 @@ import { CardContent, CardDescription, CardHeader, CardTitle } from '@/component
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { FadeIn } from '@/components/ui/animations';
-import { Contact, Template, Quota, ContactGroup, AssetFile } from '@/lib/services/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+import { Template, Quota, ContactGroup, AssetFile, ContactWithGroup } from '@/lib/services/types';
 import { preflightService } from '@/lib/services/PreflightService';
 import { JobProgressModal } from '@/components/ui/JobProgressModal';
 import { toast } from 'sonner';
@@ -35,8 +46,24 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  ChevronsUpDown,
+  Check,
   X
 } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 const PRESET_DELAYS = [1, 3, 5, 10, 15, 30, 60, 120, 300, 600, 900];
 
@@ -56,8 +83,8 @@ function SendPageContent({
   quota,
   groups,
   assets,
-  selectedGroupId,
-  setSelectedGroupId,
+  selectedGroupIds,
+  setSelectedGroupIds,
   selectedTemplate,
   setSelectedTemplate,
   selectedAssets,
@@ -79,15 +106,19 @@ function SendPageContent({
   setShowProgressModal,
   activeJobId,
   flowState,
-  validationErrors
+  validationErrors,
+  showSpamWarning,
+  setShowSpamWarning,
+  spamWarningReasons,
+  proceedWithCampaign
 }: {
-  contacts: Contact[];
+  contacts: ContactWithGroup[];
   templates: Template[];
   quota: Quota | null;
   groups: ContactGroup[];
   assets: AssetFile[];
-  selectedGroupId: string;
-  setSelectedGroupId: (id: string) => void;
+  selectedGroupIds: string[];
+  setSelectedGroupIds: (ids: string[]) => void;
   selectedTemplate: string;
   setSelectedTemplate: (id: string) => void;
   selectedAssets: string[];
@@ -96,9 +127,9 @@ function SendPageContent({
   isSending: boolean;
   sendResult: any;
   handleStartCampaign: () => void;
-  targetContacts: Contact[];
+  targetContacts: ContactWithGroup[];
   selectedTemplateData: Template | undefined;
-  selectedGroupData: ContactGroup | { name: string; color: string };
+  selectedGroupData: (ContactGroup | { name: string; color: string })[];
   canSend: boolean;
   previewMessage: () => string;
   getSelectedAssets: () => AssetFile[];
@@ -110,9 +141,16 @@ function SendPageContent({
   activeJobId: string | null;
   flowState: SendFlowState;
   validationErrors: string[];
+  showSpamWarning: boolean;
+  setShowSpamWarning: (show: boolean) => void;
+  spamWarningReasons: string[];
+  proceedWithCampaign: () => void;
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
+  const selectedGroupsData = selectedGroupIds.includes('all')
+    ? []
+    : groups.filter(g => selectedGroupIds.includes(g.id));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -141,8 +179,7 @@ function SendPageContent({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Configuration Panel */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Target Group Selection */}
-              <AnimatedCard animation="slideUp" delay={0.1} className="min-h-[250px]">
+              <AnimatedCard animation="slideUp" delay={0.1} className="min-h-[250px] overflow-visible">
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Target className="h-5 w-5" />
@@ -153,40 +190,123 @@ function SendPageContent({
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="group-select">{intl.formatMessage({ id: 'send.config.target.label', defaultMessage: 'Contact Group' })}</Label>
-                      <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={intl.formatMessage({ id: 'send.config.target.placeholder', defaultMessage: 'Select contact group' })} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })} ({contacts.length})</SelectItem>
-                          {groups.map((group) => (
-                            <SelectItem key={group.id} value={group.id}>
-                              <div className="flex items-center space-x-2">
-                                <div
-                                  className="w-3 h-3 rounded-full border"
-                                  style={{ backgroundColor: group.color }}
-                                />
-                                <span>{group.name} ({contacts.filter(c => c.group_id === group.id).length})</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="mb-2 block">{intl.formatMessage({ id: 'send.config.target.label', defaultMessage: 'Contact Group' })}</Label>
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between h-auto min-h-[40px] py-2"
+                          >
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {selectedGroupIds.includes('all') ? (
+                                <span>{intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })} ({contacts.length})</span>
+                              ) : selectedGroupIds.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedGroupIds.length > 3 ? (
+                                    <Badge variant="secondary" className="mr-1">
+                                      {selectedGroupIds.length} groups selected
+                                    </Badge>
+                                  ) : (
+                                    groups
+                                      .filter(g => selectedGroupIds.includes(g.id))
+                                      .map(g => (
+                                        <Badge
+                                          key={g.id}
+                                          variant="secondary"
+                                          className="mr-1 mb-1"
+                                          style={{ borderLeft: `3px solid ${g.color || '#ccc'}` }}
+                                        >
+                                          {g.name}
+                                        </Badge>
+                                      ))
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">{intl.formatMessage({ id: 'send.config.target.placeholder', defaultMessage: 'Select contact group' })}</span>
+                              )}
+                            </div>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search group..." />
+                            <CommandList>
+                              <CommandEmpty>No group found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="all"
+                                  onSelect={() => setSelectedGroupIds(['all'])}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedGroupIds.includes('all') ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {intl.formatMessage({ id: 'send.config.target.all', defaultMessage: 'All Contacts' })}
+                                  <span className="ml-auto text-muted-foreground text-xs">
+                                    {contacts.length}
+                                  </span>
+                                </CommandItem>
+                              </CommandGroup>
+                              <CommandSeparator />
+                              <CommandGroup>
+                                {groups.map((group) => (
+                                  <CommandItem
+                                    key={group.id}
+                                    value={group.name}
+                                    onSelect={() => {
+                                      if (selectedGroupIds.includes('all')) {
+                                        // If 'all' was selected, replace with this new selection
+                                        setSelectedGroupIds([group.id]);
+                                      } else {
+                                        if (selectedGroupIds.includes(group.id)) {
+                                          // Deselect
+                                          const newIds = selectedGroupIds.filter(id => id !== group.id);
+                                          setSelectedGroupIds(newIds.length === 0 ? ['all'] : newIds);
+                                        } else {
+                                          // Select
+                                          setSelectedGroupIds([...selectedGroupIds, group.id]);
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedGroupIds.includes(group.id) ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex items-center">
+                                      <div
+                                        className="w-3 h-3 rounded-full border mr-2"
+                                        style={{ backgroundColor: group.color }}
+                                      />
+                                      <span>{group.name}</span>
+                                    </div>
+                                    <span className="ml-auto text-muted-foreground text-xs">
+                                      {contacts.filter(c => c.groups && c.groups.id === group.id).length}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
-                    <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">{intl.formatMessage({ id: 'send.config.target.summary', defaultMessage: 'Target Contacts:' })}</span>
                         <Badge variant="secondary">{targetContacts.length}</Badge>
                       </div>
-                      {selectedGroupId !== 'all' && (
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className="w-3 h-3 rounded-full border"
-                            style={{ backgroundColor: selectedGroupData.color }}
-                          />
-                          <span className="text-sm text-blue-700">{selectedGroupData.name}</span>
+                      {!selectedGroupIds.includes('all') && selectedGroupIds.length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Included groups: {selectedGroupsData.map(g => g.name).join(', ')}
                         </div>
                       )}
                     </div>
@@ -409,7 +529,7 @@ function SendPageContent({
                           <p className="font-medium text-yellow-800">{intl.formatMessage({ id: 'send.config.summary.title', defaultMessage: 'Send Configuration Summary:' })}</p>
                           <ul className="text-yellow-700 mt-1 space-y-1">
                             <li>• {intl.formatMessage({ id: 'send.config.summary.target', defaultMessage: 'Target: {count} contacts' }, { count: targetContacts.length })}</li>
-                            <li>• {intl.formatMessage({ id: 'send.config.summary.group', defaultMessage: 'Group: {name}' }, { name: selectedGroupData.name })}</li>
+                            <li>• {intl.formatMessage({ id: 'send.config.summary.group', defaultMessage: 'Group: {name}' }, { name: selectedGroupIds.includes('all') ? 'All Contacts' : selectedGroupData.map(g => g.name).join(', ') })}</li>
                             <li>• {intl.formatMessage({ id: 'send.config.summary.template', defaultMessage: 'Template: {name}' }, { name: selectedTemplateData?.name || 'Not selected' })}</li>
                             {selectedAssets.length > 0 && (
                               <li>• {intl.formatMessage({ id: 'send.config.summary.assets', defaultMessage: 'Assets: {count} file(s) attached' }, { count: selectedAssets.length })}</li>
@@ -552,7 +672,9 @@ function SendPageContent({
                         </div>
                         <div className="text-xs text-muted-foreground mt-3">
                           <div>Template: {sendResult.templateName}</div>
-                          <div>Group: {sendResult.groupName}</div>
+                          <div>Group: {selectedGroupIds.includes('all')
+                            ? 'All Contacts'
+                            : groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name).join(', ')}</div>
                           {sendResult.selectedAssets && sendResult.selectedAssets.length > 0 && (
                             <div>Assets: {sendResult.selectedAssets.length} file(s) attached</div>
                           )}
@@ -583,9 +705,53 @@ function SendPageContent({
           onClose={() => setShowProgressModal(false)}
         />
       )}
+
+      {/* Spam Warning Modal */}
+      <AlertDialog open={showSpamWarning} onOpenChange={setShowSpamWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              {intl.formatMessage({ id: 'send.spam.warning.title', defaultMessage: 'Peringatan Risiko Spam' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{intl.formatMessage({ id: 'send.spam.warning.desc', defaultMessage: 'Pengaturan pengiriman Anda berisiko terdeteksi sebagai spam oleh WhatsApp:' })}</p>
+                <ul className="list-disc pl-4 space-y-1 text-sm">
+                  {spamWarningReasons.map((reason, idx) => (
+                    <li key={idx} className="text-destructive">{reason}</li>
+                  ))}
+                </ul>
+                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-sm">
+                  <p className="font-medium text-yellow-800">{intl.formatMessage({ id: 'send.spam.warning.risk', defaultMessage: 'Risiko:' })}</p>
+                  <ul className="text-yellow-700 mt-1 space-y-1">
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.ban', defaultMessage: 'Akun WhatsApp bisa di-ban sementara atau permanen' })}</li>
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.spam', defaultMessage: 'Pesan tidak terkirim atau masuk ke folder spam' })}</li>
+                    <li>• {intl.formatMessage({ id: 'send.spam.risk.reputation', defaultMessage: 'Reputasi nomor telepon Anda menurun' })}</li>
+                  </ul>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{intl.formatMessage({ id: 'send.spam.button.cancel', defaultMessage: 'Batalkan & Ubah Pengaturan' })}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowSpamWarning(false);
+                proceedWithCampaign();
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {intl.formatMessage({ id: 'send.spam.button.proceed', defaultMessage: 'Lanjutkan dengan Risiko' })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+import { SafetyWarningModal } from '@/components/ui/SafetyWarningModal';
 
 export function SendPage() {
   const {
@@ -599,12 +765,12 @@ export function SendPage() {
     isInitialized
   } = useServices();
 
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<ContactWithGroup[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [assets, setAssets] = useState<AssetFile[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(['all']);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   // Default to dynamic range [3, 10]
@@ -621,7 +787,22 @@ export function SendPage() {
   const [flowState, setFlowState] = useState<SendFlowState>('idle');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
+  // Spam Warning Modal State
+  const [showSpamWarning, setShowSpamWarning] = useState(false);
+  const [spamWarningReasons, setSpamWarningReasons] = useState<string[]>([]);
+
+  // Safety Warning Modal State
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+
   const intl = useIntl();
+
+  // Check safety warning preference on mount
+  useEffect(() => {
+    const hidden = localStorage.getItem('xenderin_hide_safety_warning');
+    if (!hidden) {
+      setShowSafetyModal(true);
+    }
+  }, []);
 
   const loadData = async () => {
     try {
@@ -677,21 +858,21 @@ export function SendPage() {
   };
 
   const getTargetContacts = () => {
-    if (selectedGroupId === 'all') {
+    if (selectedGroupIds.includes('all')) {
       return contacts;
     }
-    return contacts.filter(contact => contact.group_id === selectedGroupId);
+    return contacts.filter(contact => contact.group_id && selectedGroupIds.includes(contact.group_id));
   };
 
   const getSelectedTemplate = () => {
     return templates.find(t => t.id === selectedTemplate);
   };
 
-  const getSelectedGroup = () => {
-    if (selectedGroupId === 'all') {
-      return { name: 'All Contacts', color: '#6b7280' };
+  const getSelectedGroups = () => {
+    if (selectedGroupIds.includes('all')) {
+      return [{ name: 'All Contacts', color: '#6b7280' }];
     }
-    return groups.find(g => g.id === selectedGroupId) || { name: 'Unknown Group', color: '#6b7280' };
+    return groups.filter(g => selectedGroupIds.includes(g.id));
   };
 
   const getSelectedAssets = () => {
@@ -723,7 +904,59 @@ export function SendPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // Check recent send volume in last 30 minutes
+  const checkRecentSendVolume = async (): Promise<number> => {
+    try {
+      const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+      const recentLogs = await historyService.getLogsByDateRange(thirtyMinsAgo, now);
+
+      // Sum up total contacts sent in last 30 mins
+      return recentLogs.reduce((sum, log) => sum + (log.total_contacts || 0), 0);
+    } catch (error) {
+      console.error('Failed to check recent send volume:', error);
+      return 0;
+    }
+  };
+
   const handleStartCampaign = async () => {
+    if (!selectedTemplate || !quota) return;
+
+    const selectedTemplateData = getSelectedTemplate();
+
+    if (!selectedTemplateData) return;
+
+    // --- SPAM RISK CHECK ---
+    const warnings: string[] = [];
+
+    // Check 1: Delay too low (< 10 seconds)
+    if (delayRange[0] < 10) {
+      warnings.push(intl.formatMessage(
+        { id: 'send.spam.delay_warning', defaultMessage: 'Delay minimum {delay} detik terlalu rendah. Disarankan minimal 10 detik untuk menghindari deteksi spam.' },
+        { delay: delayRange[0] }
+      ));
+    }
+
+    // Check 2: Recent volume too high (>= 100 in last 30 mins)
+    const recentVolume = await checkRecentSendVolume();
+    if (recentVolume >= 100) {
+      warnings.push(intl.formatMessage(
+        { id: 'send.spam.volume_warning', defaultMessage: 'Anda sudah mengirim ke {count} kontak dalam 30 menit terakhir. Ini berisiko terdeteksi sebagai spam.' },
+        { count: recentVolume }
+      ));
+    }
+
+    if (warnings.length > 0) {
+      setSpamWarningReasons(warnings);
+      setShowSpamWarning(true);
+      return; // Stop here, wait for user confirmation
+    }
+
+    // No warnings, proceed directly
+    await proceedWithCampaign();
+  };
+
+  const proceedWithCampaign = async () => {
     if (!selectedTemplate || !quota) return;
 
     const targetContacts = getTargetContacts();
@@ -794,7 +1027,7 @@ export function SendPage() {
         reservation_id: reserveResult.reservation_id,
         user_id: currentUserId,
         master_user_id: currentUserId,
-        contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+        contact_group_id: (selectedGroupIds.length === 1 && !selectedGroupIds.includes('all')) ? selectedGroupIds[0] : undefined,
         template_id: selectedTemplate,
         total_contacts: targetContacts.length,
         success_count: 0,
@@ -921,7 +1154,7 @@ export function SendPage() {
           const createdLog = await historyService.createLog({
             user_id: currentUserId,
             master_user_id: currentUserId,
-            contact_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+            contact_group_id: (selectedGroupIds.length === 1 && !selectedGroupIds.includes('all')) ? selectedGroupIds[0] : undefined,
             template_id: selectedTemplate,
             template_name: selectedTemplateData?.name || 'Unknown Template',
             total_contacts: data.total,
@@ -986,7 +1219,7 @@ export function SendPage() {
             successCount: data.success,
             failedCount: data.failed,
             templateName: selectedTemplateData?.name,
-            groupName: selectedGroupData.name,
+            groupName: selectedGroupIds.includes('all') ? 'All Contacts' : getSelectedGroups().map(g => g.name).join(', '),
             selectedAssets: getSelectedAssets(),
             delayRange: `${delayRange[0]}-${delayRange[1]}`,
             reservationId: reservationId
@@ -1002,7 +1235,7 @@ export function SendPage() {
     return () => {
       unsubscribe();
     };
-  }, [activeJobId, reservationId, quota, delayRange, selectedGroupId, selectedTemplate]);
+  }, [activeJobId, reservationId, quota, delayRange, selectedGroupIds, selectedTemplate]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -1012,7 +1245,7 @@ export function SendPage() {
 
   const targetContacts = getTargetContacts();
   const selectedTemplateData = getSelectedTemplate();
-  const selectedGroupData = getSelectedGroup();
+  const selectedGroupData = getSelectedGroups();
   const canSend = !!(selectedTemplate && targetContacts.length > 0 && quota && quota.remaining >= targetContacts.length);
 
   if (isLoading) {
@@ -1024,36 +1257,48 @@ export function SendPage() {
   }
 
   return (
-    <SendPageContent
-      contacts={contacts}
-      templates={templates}
-      quota={quota}
-      groups={groups}
-      assets={assets}
-      selectedGroupId={selectedGroupId}
-      setSelectedGroupId={setSelectedGroupId}
-      selectedTemplate={selectedTemplate}
-      setSelectedTemplate={setSelectedTemplate}
-      selectedAssets={selectedAssets}
-      delayRange={delayRange}
-      setDelayRange={setDelayRange}
-      isSending={isSending}
-      sendResult={sendResult}
-      handleStartCampaign={handleStartCampaign}
-      targetContacts={targetContacts}
-      selectedTemplateData={selectedTemplateData}
-      selectedGroupData={selectedGroupData}
-      canSend={canSend}
-      previewMessage={previewMessage}
-      getSelectedAssets={getSelectedAssets}
-      toggleAssetSelection={toggleAssetSelection}
-      getAssetIcon={getAssetIcon}
-      formatFileSize={formatFileSize}
-      showProgressModal={showProgressModal}
-      setShowProgressModal={setShowProgressModal}
-      activeJobId={activeJobId}
-      flowState={flowState}
-      validationErrors={validationErrors}
-    />
+    <>
+      <SendPageContent
+        contacts={contacts}
+        templates={templates}
+        quota={quota}
+        groups={groups}
+        assets={assets}
+        selectedGroupIds={selectedGroupIds}
+        setSelectedGroupIds={setSelectedGroupIds}
+        selectedTemplate={selectedTemplate}
+        setSelectedTemplate={setSelectedTemplate}
+        selectedAssets={selectedAssets}
+        delayRange={delayRange}
+        setDelayRange={setDelayRange}
+        isSending={isSending}
+        sendResult={sendResult}
+        handleStartCampaign={handleStartCampaign}
+        targetContacts={targetContacts}
+        selectedTemplateData={selectedTemplateData}
+        selectedGroupData={selectedGroupData}
+        canSend={canSend}
+        previewMessage={previewMessage}
+        getSelectedAssets={getSelectedAssets}
+        toggleAssetSelection={toggleAssetSelection}
+        getAssetIcon={getAssetIcon}
+        formatFileSize={formatFileSize}
+        showProgressModal={showProgressModal}
+        setShowProgressModal={setShowProgressModal}
+        activeJobId={activeJobId}
+        flowState={flowState}
+        validationErrors={validationErrors}
+        showSpamWarning={showSpamWarning}
+        setShowSpamWarning={setShowSpamWarning}
+        spamWarningReasons={spamWarningReasons}
+        proceedWithCampaign={proceedWithCampaign}
+      />
+
+      {/* Safety Warning Modal */}
+      <SafetyWarningModal
+        open={showSafetyModal}
+        onClose={() => setShowSafetyModal(false)}
+      />
+    </>
   );
 }

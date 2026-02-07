@@ -1,6 +1,6 @@
-# Xenderin Project Architecture Analysis
+# XalesIn Project Architecture Analysis
 
-> **Context**: This document provides a high-level architectural overview of the current "Xenderin" codebase to facilitate discussion regarding the implementation of a **Team CRM** system.
+> **Context**: This document provides a high-level architectural overview of the current "XalesIn" codebase to facilitate discussion regarding the implementation of a **Team CRM** system.
 
 ## 1. Technology Stack
 

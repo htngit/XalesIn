@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Search, Loader2, RefreshCw, Save, Phone, Globe, Minimize2, Eye, Filter } from 'lucide-react';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 interface ScrapTabProps {
     groups: ContactGroup[];
@@ -27,6 +28,7 @@ interface ScrapTabProps {
 }
 
 export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: ScrapTabProps) {
+    const intl = useIntl();
     const { contactService, groupService } = useServices();
 
     // State
@@ -90,8 +92,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
     const handleScrape = async () => {
         if (!keyword.trim()) {
             toast({
-                title: "Validation Error",
-                description: "Please enter a keyword to search",
+                title: intl.formatMessage({ id: 'common.validation_error' }),
+                description: intl.formatMessage({ id: 'scraping.notification.validation_keyword' }),
                 variant: "destructive"
             });
             return;
@@ -103,7 +105,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             setShowProgressModal(true);
             setResults([]);
             setSelectedIndices(new Set());
-            setProgress({ total: limit, current: 0, message: 'Initializing scraper...' });
+            setProgress({ total: limit, current: 0, message: intl.formatMessage({ id: 'scraping.notification.initializing' }) });
 
             // 2. Trigger Main Process
             // @ts-ignore
@@ -118,8 +120,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                 setSelectedIndices(new Set(validIndices));
 
                 toast({
-                    title: "Scraping Completed",
-                    description: `Found ${response.data.length} businesses.`,
+                    title: intl.formatMessage({ id: 'scraping.notification.completed' }),
+                    description: intl.formatMessage({ id: 'scraping.notification.found' }, { count: response.data.length }),
                 });
             } else {
                 throw new Error(response.error || 'Unknown error');
@@ -127,8 +129,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
         } catch (error) {
             console.error('Scraping error:', error);
             toast({
-                title: "Scraping Failed",
-                description: error instanceof Error ? error.message : "Failed to scrape data",
+                title: intl.formatMessage({ id: 'scraping.notification.failed' }),
+                description: error instanceof Error ? error.message : intl.formatMessage({ id: 'common.error' }),
                 variant: "destructive"
             });
         } finally {
@@ -148,8 +150,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
         setShowProgressModal(false);
         // isScraping remains true, so the background process continues
         toast({
-            title: "Running in Background",
-            description: "Scraping will continue. You'll be notified when it's done.",
+            title: intl.formatMessage({ id: 'scraping.notification.background' }),
+            description: intl.formatMessage({ id: 'scraping.notification.background_desc' }),
         });
     };
 
@@ -181,8 +183,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
 
         if (targetGroupId === 'new' && !newGroupName.trim()) {
             toast({
-                title: "Validation Error",
-                description: "Please enter a name for the new group",
+                title: intl.formatMessage({ id: 'common.validation_error' }),
+                description: intl.formatMessage({ id: 'scraping.notification.validation_group' }),
                 variant: "destructive"
             });
             return;
@@ -223,8 +225,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             const successCount = result.created;
 
             toast({
-                title: "Success",
-                description: `Saved ${successCount} contacts successfully.`,
+                title: intl.formatMessage({ id: 'common.success' }),
+                description: intl.formatMessage({ id: 'scraping.notification.save_success' }, { count: successCount }),
             });
 
             // Reset
@@ -239,8 +241,8 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
         } catch (error) {
             console.error('Save error:', error);
             toast({
-                title: "Save Failed",
-                description: "Failed to save contacts.",
+                title: intl.formatMessage({ id: 'common.error' }),
+                description: intl.formatMessage({ id: 'scraping.notification.save_failed' }),
                 variant: "destructive"
             });
         } finally {
@@ -258,49 +260,50 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                             <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
                         </div>
                         <div>
-                            <h4 className="font-semibold text-blue-900">Scraping in progress...</h4>
+                            <h4 className="font-semibold text-blue-900"><FormattedMessage id="scraping.banner.progress" defaultMessage="Scraping in progress..." /></h4>
                             <p className="text-sm text-blue-700">{progress.message} ({progress.current}/{progress.total})</p>
                         </div>
                     </div>
                     <Button variant="outline" size="sm" onClick={handleViewProgress}>
                         <Eye className="mr-2 h-4 w-4" />
-                        View
+                        <FormattedMessage id="scraping.banner.view" defaultMessage="View" />
                     </Button>
                 </div>
             )}
 
             <AnimatedCard animation="fadeIn">
                 <CardHeader>
-                    <CardTitle>Map Scraping (Bing Maps)</CardTitle>
+                    <CardTitle><FormattedMessage id="scraping.title" defaultMessage="Map Scraping" /></CardTitle>
                     <CardDescription>
-                        Search for businesses on Bing Maps and extract contact information.
+                        <FormattedMessage id="scraping.description" defaultMessage="Search for businesses on maps and extract contact information." />
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 items-end">
                         <div className="flex-1 space-y-2 w-full">
-                            <label className="text-sm font-medium">Search Keyword</label>
+                            <label className="text-sm font-medium"><FormattedMessage id="scraping.keyword.label" defaultMessage="Search Keyword" /></label>
                             <div className="relative">
                                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="e.g. Restoran Jakarta Selatan"
+                                    placeholder={intl.formatMessage({ id: 'scraping.keyword.placeholder', defaultMessage: 'e.g. Restoran Jakarta Selatan' })}
                                     value={keyword}
                                     onChange={(e) => setKeyword(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && !isScraping && handleScrape()}
                                     disabled={isScraping}
+                                    className="pl-10"
                                 />
                             </div>
                         </div>
 
                         <div className="w-full md:w-32 space-y-2">
-                            <label className="text-sm font-medium">Max Results</label>
+                            <label className="text-sm font-medium"><FormattedMessage id="scraping.limit.label" defaultMessage="Max Results" /></label>
                             <Select
                                 value={limit.toString()}
                                 onValueChange={(v) => setLimit(parseInt(v))}
                                 disabled={isScraping}
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Limit" />
+                                    <SelectValue placeholder={intl.formatMessage({ id: 'scraping.limit.placeholder', defaultMessage: 'Limit' })} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="10">10</SelectItem>
@@ -319,12 +322,12 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                             {isScraping ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Scraping...
+                                    <FormattedMessage id="scraping.button.scraping" defaultMessage="Scraping..." />
                                 </>
                             ) : (
                                 <>
                                     <RefreshCw className="mr-2 h-4 w-4" />
-                                    Start Scraping
+                                    <FormattedMessage id="scraping.button.start" defaultMessage="Start Scraping" />
                                 </>
                             )}
                         </Button>
@@ -335,12 +338,12 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             {/* Results Section */}
             {results.length > 0 && (
                 <AnimatedCard animation="slideUp" delay={0.1}>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <CardTitle>Scraped Results ({filteredResults.length})</CardTitle>
-                            <CardDescription>Select contacts to save</CardDescription>
+                            <CardTitle><FormattedMessage id="scraping.results.title" defaultMessage="Scraped Results ({count})" values={{ count: filteredResults.length }} /></CardTitle>
+                            <CardDescription><FormattedMessage id="scraping.results.description" defaultMessage="Select contacts to save" /></CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col md:flex-row gap-2">
                             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
                                 <Filter className="ml-2 h-4 w-4 text-muted-foreground" />
                                 <Select value={filterType} onValueChange={(v: any) => {
@@ -348,12 +351,12 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                     setSelectedIndices(new Set()); // Reset selection on filter change
                                 }}>
                                     <SelectTrigger className="w-[140px] h-9 border-none bg-transparent shadow-none">
-                                        <SelectValue placeholder="Filter" />
+                                        <SelectValue placeholder={intl.formatMessage({ id: 'scraping.filter.placeholder', defaultMessage: 'Filter' })} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Numbers</SelectItem>
-                                        <SelectItem value="mobile">Mobile Only</SelectItem>
-                                        <SelectItem value="landline">Landline Only</SelectItem>
+                                        <SelectItem value="all"><FormattedMessage id="scraping.filter.all" defaultMessage="All Numbers" /></SelectItem>
+                                        <SelectItem value="mobile"><FormattedMessage id="scraping.filter.mobile" defaultMessage="Mobile Only" /></SelectItem>
+                                        <SelectItem value="landline"><FormattedMessage id="scraping.filter.landline" defaultMessage="Landline Only" /></SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -361,10 +364,10 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
                                 <Select value={targetGroupId} onValueChange={setTargetGroupId}>
                                     <SelectTrigger className="w-[180px] h-9">
-                                        <SelectValue placeholder="Select Group" />
+                                        <SelectValue placeholder={intl.formatMessage({ id: 'scraping.group.select', defaultMessage: 'Select Group' })} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="new">+ Create New Group</SelectItem>
+                                        <SelectItem value="new"><FormattedMessage id="scraping.group.new" defaultMessage="+ Create New Group" /></SelectItem>
                                         {groups.map(g => (
                                             <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                                         ))}
@@ -373,10 +376,10 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
 
                                 {targetGroupId === 'new' && (
                                     <Input
-                                        placeholder="Group Name"
+                                        placeholder={intl.formatMessage({ id: 'scraping.group.name_placeholder', defaultMessage: 'Group Name' })}
                                         value={newGroupName}
                                         onChange={(e) => setNewGroupName(e.target.value)}
-                                        className="w-[180px] h-9"
+                                        className="w-[150px] h-9"
                                     />
                                 )}
                             </div>
@@ -387,7 +390,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                 ) : (
                                     <Save className="mr-2 h-4 w-4" />
                                 )}
-                                Save Selected ({selectedIndices.size})
+                                <FormattedMessage id="scraping.button.save" defaultMessage="Save Selected ({count})" values={{ count: selectedIndices.size }} />
                             </Button>
                         </div>
                     </CardHeader>
@@ -402,10 +405,10 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                                 onCheckedChange={handleSelectAll}
                                             />
                                         </TableHead>
-                                        <TableHead>Business Name</TableHead>
-                                        <TableHead>Phone</TableHead>
-                                        <TableHead>Address</TableHead>
-                                        <TableHead>Website</TableHead>
+                                        <TableHead><FormattedMessage id="scraping.table.name" defaultMessage="Business Name" /></TableHead>
+                                        <TableHead><FormattedMessage id="scraping.table.phone" defaultMessage="Phone" /></TableHead>
+                                        <TableHead><FormattedMessage id="scraping.table.address" defaultMessage="Address" /></TableHead>
+                                        <TableHead><FormattedMessage id="scraping.table.website" defaultMessage="Website" /></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -427,7 +430,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                                 </TableCell>
                                                 <TableCell className="font-medium text-xs">
                                                     {item.name}
-                                                    {isExisting && <span className="block text-[10px] text-red-500 font-semibold">(Already Saved)</span>}
+                                                    {isExisting && <span className="block text-[10px] text-red-500 font-semibold"><FormattedMessage id="scraping.table.already_saved" defaultMessage="(Already Saved)" /></span>}
                                                 </TableCell>
                                                 <TableCell>
                                                     {item.phone ? (
@@ -436,7 +439,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                                             {item.phone}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-muted-foreground text-xs italic">No phone</span>
+                                                        <span className="text-muted-foreground text-xs italic"><FormattedMessage id="scraping.table.no_phone" defaultMessage="No phone" /></span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="max-w-[300px] truncate text-xs" title={item.address}>{item.address}</TableCell>
@@ -444,7 +447,7 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                                                     {item.website && (
                                                         <a href={item.website} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline flex items-center">
                                                             <Globe className="mr-1 h-3 w-3" />
-                                                            Link
+                                                            <FormattedMessage id="scraping.table.link" defaultMessage="Link" />
                                                         </a>
                                                     )}
                                                 </TableCell>
@@ -462,9 +465,9 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
             <Dialog open={showProgressModal} onOpenChange={(open) => !open && handleRunInBackground()}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Scraping in progress...</DialogTitle>
+                        <DialogTitle><FormattedMessage id="scraping.dialog.title" defaultMessage="Scraping in progress..." /></DialogTitle>
                         <DialogDescription>
-                            {progress.message || "Please wait..."}
+                            {progress.message || intl.formatMessage({ id: 'scraping.dialog.wait', defaultMessage: 'Please wait...' })}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -477,9 +480,9 @@ export function ScrapTab({ groups, existingContacts = [], onContactsSaved }: Scr
                     <div className="flex justify-end gap-2">
                         <Button variant="outline" onClick={handleRunInBackground}>
                             <Minimize2 className="mr-2 h-4 w-4" />
-                            Run in Background
+                            <FormattedMessage id="scraping.dialog.background" defaultMessage="Run in Background" />
                         </Button>
-                        <Button variant="destructive" onClick={handleCancelScrape}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleCancelScrape}><FormattedMessage id="common.button.cancel" defaultMessage="Cancel" /></Button>
                     </div>
                 </DialogContent>
             </Dialog>

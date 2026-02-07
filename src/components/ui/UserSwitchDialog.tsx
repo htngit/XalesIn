@@ -1,93 +1,98 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FormattedMessage } from 'react-intl';
 
 interface UserSwitchDialogProps {
   isOpen: boolean;
-  previousUserId: string;
-  onConfirm: (action: 'cleanup' | 'keep' | 'always') => void;
   onClose: () => void;
+  onConfirm: (cleanup: boolean, remember: boolean) => void;
 }
 
-export function UserSwitchDialog({ isOpen, onConfirm, onClose }: UserSwitchDialogProps) {
-  const [selectedAction, setSelectedAction] = useState<'cleanup' | 'keep' | 'always'>('cleanup');
-  const [rememberChoice, setRememberChoice] = useState(false);
+export function UserSwitchDialog({ isOpen, onClose, onConfirm }: UserSwitchDialogProps) {
+  const [cleanupOption, setCleanupOption] = useState<'cleanup' | 'keep' | 'always'>('cleanup');
+  const [rememberPreference, setRememberPreference] = useState(false);
 
-  // Reset state when dialog opens
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedAction('cleanup');
-      setRememberChoice(false);
-    }
-  }, [isOpen]);
-
-  // Handle cleanup with user choice
   const handleConfirm = () => {
-    if (rememberChoice) {
-      // Save user preference to localStorage to respect on future switches
-      localStorage.setItem('userSwitchPreference', selectedAction);
-      localStorage.setItem('userSwitchRememberChoice', 'true');
-    }
-
-    onConfirm(selectedAction);
-    onClose();
+    onConfirm(cleanupOption !== 'keep', rememberPreference || cleanupOption === 'always');
   };
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>User Data Cleanup</CardTitle>
-          <CardDescription>
-            You're switching to a different user account. What would you like to do with the previous user's data?
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent>
-          <RadioGroup value={selectedAction} onValueChange={(value: any) => setSelectedAction(value)}>
-            <div className="flex items-center space-x-2 mb-3">
-              <RadioGroupItem value="cleanup" id="cleanup" />
-              <Label htmlFor="cleanup">Clear previous user's data</Label>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>
+            <FormattedMessage id="auth.switch_user.title" defaultMessage="User Data Cleanup" />
+          </DialogTitle>
+          <DialogDescription>
+            <FormattedMessage
+              id="auth.switch_user.description"
+              defaultMessage="You're switching to a different user account. What would you like to do with the previous user's data?"
+            />
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <RadioGroup
+            value={cleanupOption}
+            onValueChange={(value: 'cleanup' | 'keep' | 'always') => setCleanupOption(value)}
+            className="gap-4"
+          >
+            <div className="flex items-start space-x-3">
+              <RadioGroupItem value="cleanup" id="cleanup" className="mt-1" />
+              <Label htmlFor="cleanup" className="font-normal cursor-pointer leading-relaxed">
+                <FormattedMessage id="auth.switch_user.option.cleanup" defaultMessage="Clear previous user's data" />
+              </Label>
             </div>
-            
-            <div className="flex items-center space-x-2 mb-3">
-              <RadioGroupItem value="keep" id="keep" />
-              <Label htmlFor="keep">Keep previous user's data</Label>
+
+            <div className="flex items-start space-x-3">
+              <RadioGroupItem value="keep" id="keep" className="mt-1" />
+              <Label htmlFor="keep" className="font-normal cursor-pointer leading-relaxed">
+                <FormattedMessage id="auth.switch_user.option.keep" defaultMessage="Keep previous user's data" />
+              </Label>
             </div>
-            
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="always" id="always" />
-              <Label htmlFor="always">Always auto-cleanup on user switch</Label>
+
+            <div className="flex items-start space-x-3">
+              <RadioGroupItem value="always" id="always" className="mt-1" />
+              <Label htmlFor="always" className="font-normal cursor-pointer leading-relaxed">
+                <FormattedMessage id="auth.switch_user.option.always" defaultMessage="Always auto-cleanup on user switch" />
+              </Label>
             </div>
           </RadioGroup>
-          
-          <div className="mt-4 flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="remember-choice"
-              checked={rememberChoice}
-              onChange={(e) => setRememberChoice(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            <Label htmlFor="remember-choice">Remember my choice for future user switches</Label>
-          </div>
-        </CardContent>
-        
-        <CardFooter className="flex justify-between">
+
+          {cleanupOption !== 'always' && (
+            <div className="flex items-center space-x-2 border-t pt-4 mt-2">
+              <Checkbox
+                id="remember"
+                checked={rememberPreference}
+                onCheckedChange={(checked) => setRememberPreference(checked as boolean)}
+              />
+              <Label htmlFor="remember" className="text-sm font-normal cursor-pointer text-muted-foreground">
+                <FormattedMessage id="auth.switch_user.remember" defaultMessage="Remember my choice for future user switches" />
+              </Label>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            <FormattedMessage id="common.button.cancel" defaultMessage="Cancel" />
           </Button>
           <Button onClick={handleConfirm}>
-            Confirm
+            <FormattedMessage id="auth.switch_user.confirm" defaultMessage="Confirm" />
           </Button>
-        </CardFooter>
-      </Card>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

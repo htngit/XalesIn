@@ -1,4 +1,4 @@
-// Upload Xenderin Logo to Supabase Storage
+// Upload XalesIn Logo to Supabase Storage
 // Run: node upload-logo.js
 
 import { createClient } from '@supabase/supabase-js';
@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function uploadLogo() {
     try {
-        console.log('📤 Uploading Xenderin logo to Supabase Storage...');
+        console.log('📤 Uploading XalesIn logo to Supabase Storage...');
 
         // Read logo file
         const logoPath = resolve('C:/Users/andry/.gemini/antigravity/brain/8b897930-fc57-4687-b517-720f4407ac25/uploaded_image_1763740087952.png');
@@ -21,7 +21,7 @@ async function uploadLogo() {
         // Upload to Supabase Storage
         const { data, error } = await supabase.storage
             .from('assets')
-            .upload('branding/xenderin-logo.png', logoBuffer, {
+            .upload('branding/xalesin-logo.png', logoBuffer, {
                 contentType: 'image/png',
                 upsert: true, // Overwrite if exists
             });
@@ -34,7 +34,7 @@ async function uploadLogo() {
         // Get public URL
         const { data: publicUrlData } = supabase.storage
             .from('assets')
-            .getPublicUrl('branding/xenderin-logo.png');
+            .getPublicUrl('branding/xalesin-logo.png');
 
         console.log('✅ Logo uploaded successfully!');
         console.log('📍 Public URL:', publicUrlData.publicUrl);

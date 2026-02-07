@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,8 +32,13 @@ import {
   Hash,
   UserCheck,
   Phone,
-  Search
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  X
 } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 50;
 
 const GROUP_COLORS = [
   '#fbbf24', // amber-400
@@ -55,7 +60,9 @@ export function GroupPage() {
 
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
+  // Removed filteredContacts state in favor of derived state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -90,6 +97,42 @@ export function GroupPage() {
       toast({
         title: "Error",
         description: "Failed to load groups and contacts",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
+  const handleRestoreData = async () => {
+    try {
+      setIsLoading(true);
+      toast({
+        title: "Scanning for lost data...",
+        description: "Checking for groups with mismatched IDs...",
+        variant: "default"
+      });
+
+      const { recovered, total } = await groupService.recoverOrphanedGroups();
+
+      // Debug: Log first 5 contacts to check structure
+      const currentContacts = await contactService.getContacts();
+      console.log('DEBUG: Contact Sample:', currentContacts.slice(0, 3));
+      console.log('DEBUG: Assigned to Group:', currentContacts.filter(c => !!c.group_id).length);
+
+      await loadData();
+
+      toast({
+        title: "Recovery Complete",
+        description: `Recovered ${recovered} orphaned groups found in local database (Total scanned: ${total}).`,
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Recovery failed:', error);
+      toast({
+        title: "Recovery Failed",
+        description: "Could not run data recovery",
         variant: "destructive"
       });
     } finally {
@@ -229,31 +272,84 @@ export function GroupPage() {
 
   const handleAssignContactsToGroup = async (groupId: string, contactIds: string[]) => {
     try {
+      let successCount = 0;
+
       // Update contacts to assign them to the group
       for (const contactId of contactIds) {
-        await contactService.updateContact(contactId, { group_id: groupId });
+        try {
+          await contactService.updateContact(contactId, { group_id: groupId });
+          successCount++;
+        } catch (updateError) {
+          console.warn(`Failed to update contact ${contactId}:`, updateError);
+          // Continue with other contacts even if one fails
+        }
       }
 
-      // Update local state
+      // Update local React state directly (don't rely on loadData which may fetch stale data)
       setContacts(prev => prev.map(contact =>
         contactIds.includes(contact.id) ? { ...contact, group_id: groupId } : contact
       ));
 
-      // Refresh group contact counts
-      await loadData();
       setIsManageContactsDialogOpen(false);
       setSelectedContacts([]);
 
-      toast({
-        title: "Success",
-        description: `Successfully assigned ${contactIds.length} contacts to group`,
-        variant: "default"
-      });
+      if (successCount === contactIds.length) {
+        toast({
+          title: "Success",
+          description: `Successfully assigned ${successCount} contacts to group`,
+          variant: "default"
+        });
+      } else if (successCount > 0) {
+        toast({
+          title: "Partial Success",
+          description: `Assigned ${successCount} of ${contactIds.length} contacts. Some may sync later.`,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Warning",
+          description: "Contacts saved locally but server sync pending.",
+          variant: "default"
+        });
+      }
     } catch (error) {
       console.error('Failed to assign contacts:', error);
       toast({
         title: "Error",
         description: "Failed to assign contacts to group",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRemoveContactFromGroup = async (contactId: string) => {
+    try {
+      console.log('[GroupPage] Removing contact from group:', contactId);
+
+      // Set group_id to default group (undefined = no group)
+      const result = await contactService.updateContact(contactId, { group_id: undefined });
+      console.log('[GroupPage] updateContact result:', result);
+
+      // Update local state
+      setContacts(prev => {
+        const updated = prev.map(contact =>
+          contact.id === contactId ? { ...contact, group_id: undefined } : contact
+        );
+        console.log('[GroupPage] Local state updated. Contact now has group_id:',
+          updated.find(c => c.id === contactId)?.group_id);
+        return updated;
+      });
+
+      toast({
+        title: "Success",
+        description: "Contact removed from group",
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Failed to remove contact from group:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove contact from group",
         variant: "destructive"
       });
     }
@@ -282,25 +378,42 @@ export function GroupPage() {
   };
 
   // Filter contacts for assignment
+  // Debounce search query
   useEffect(() => {
-    if (!selectedGroup) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(contactSearchQuery);
+      setCurrentPage(1); // Reset to page 1 on search change
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [contactSearchQuery]);
+
+  // Filter contacts logic (Memoized)
+  const filteredContacts = useMemo(() => {
+    if (!selectedGroup) return [];
 
     let filtered = contacts.filter(contact => contact.group_id !== selectedGroup.id);
 
-    if (contactSearchQuery) {
+    if (debouncedSearchQuery) {
       filtered = filtered.filter(contact => {
         const currentGroup = groups.find(g => g.id === contact.group_id);
         return (
-          contact.name.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
-          contact.phone.includes(contactSearchQuery) ||
-          (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(contactSearchQuery.toLowerCase()))) ||
-          (currentGroup && currentGroup.name.toLowerCase().includes(contactSearchQuery.toLowerCase()))
+          contact.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          contact.phone.includes(debouncedSearchQuery) ||
+          (contact.tags && contact.tags.some(tag => tag.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))) ||
+          (currentGroup && currentGroup.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
         );
       });
     }
+    return filtered;
+  }, [contacts, debouncedSearchQuery, selectedGroup, groups]);
 
-    setFilteredContacts(filtered);
-  }, [contacts, contactSearchQuery, selectedGroup, groups]);
+  // Pagination Logic
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredContacts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredContacts, currentPage]);
+
+  const totalPages = Math.ceil(filteredContacts.length / ITEMS_PER_PAGE);
 
   const getGroupContacts = (groupId: string) => {
     return contacts.filter(contact => contact.group_id === groupId);
@@ -344,65 +457,72 @@ export function GroupPage() {
                 <p className="text-gray-600">Create and manage contact groups for better segmentation</p>
               </div>
             </div>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <AnimatedButton animation="scale" onClick={resetForm}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Group
-                </AnimatedButton>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Group</DialogTitle>
-                  <DialogDescription>
-                    Create a new contact group to organize your contacts better.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Group Name</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="e.g., VIP Customers"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Description (Optional)</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Brief description of this group"
-                      rows={3}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Color</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {GROUP_COLORS.map((color) => (
-                        <button
-                          key={color}
-                          className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-gray-900' : 'border-gray-200'
-                            }`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => setFormData(prev => ({ ...prev, color }))}
-                        />
-                      ))}
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={handleRestoreData} disabled={isLoading}>
+                <div className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}>↻</div>
+                Restore Lost Groups
+              </Button>
+
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <AnimatedButton animation="scale" onClick={resetForm}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Group
+                  </AnimatedButton>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Group</DialogTitle>
+                    <DialogDescription>
+                      Create a new contact group to organize your contacts better.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="name">Group Name</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g., VIP Customers"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="description">Description (Optional)</Label>
+                      <Textarea
+                        id="description"
+                        value={formData.description}
+                        onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Brief description of this group"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Color</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {GROUP_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-gray-900' : 'border-gray-200'
+                              }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setFormData(prev => ({ ...prev, color }))}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateGroup}>
-                    Create Group
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCreateGroup}>
+                      Create Group
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           {/* Stats Cards */}
@@ -586,10 +706,10 @@ export function GroupPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+        </Dialog >
 
         {/* Manage Contacts Dialog */}
-        <Dialog open={isManageContactsDialogOpen} onOpenChange={setIsManageContactsDialogOpen}>
+        < Dialog open={isManageContactsDialogOpen} onOpenChange={setIsManageContactsDialogOpen} >
           <DialogContent className="!max-w-4xl">
             <DialogHeader>
               <DialogTitle>Manage Contacts - {selectedGroup?.name}</DialogTitle>
@@ -609,8 +729,15 @@ export function GroupPage() {
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {getGroupContacts(selectedGroup.id).map((contact) => (
-                          <Badge key={contact.id} variant="outline" className="text-xs">
+                          <Badge key={contact.id} variant="outline" className="text-xs flex items-center gap-1 pr-1">
                             {contact.name}
+                            <button
+                              onClick={() => handleRemoveContactFromGroup(contact.id)}
+                              className="ml-1 rounded-full hover:bg-destructive/20 p-0.5 transition-colors"
+                              title="Remove from group"
+                            >
+                              <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                            </button>
                           </Badge>
                         ))}
                       </div>
@@ -655,7 +782,7 @@ export function GroupPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredContacts.map((contact) => (
+                          {paginatedContacts.map((contact) => (
                             <TableRow key={contact.id}>
                               <TableCell>
                                 <Checkbox
@@ -686,6 +813,40 @@ export function GroupPage() {
                         </TableBody>
                       </Table>
                     </div>
+
+                    {/* Pagination Controls */}
+                    {filteredContacts.length > 0 && (
+                      <div className="flex items-center justify-between py-2 mt-2 border-t pt-4">
+                        <div className="text-sm text-muted-foreground">
+                          Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredContacts.length)} of {filteredContacts.length} contacts
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            draggable={false}
+                            className="h-8 w-8 p-0"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <div className="text-sm font-medium min-w-[80px] text-center">
+                            Page {currentPage} of {totalPages}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            draggable={false}
+                            className="h-8 w-8 p-0"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -696,10 +857,15 @@ export function GroupPage() {
                 Cancel
               </Button>
               <Button
-                onClick={() => selectedGroup && handleAssignContactsToGroup(selectedGroup.id, selectedContacts)}
-                disabled={selectedContacts.length === 0}
+                onClick={() => {
+                  if (selectedGroup && selectedContacts.length > 0) {
+                    handleAssignContactsToGroup(selectedGroup.id, selectedContacts);
+                  } else {
+                    setIsManageContactsDialogOpen(false);
+                  }
+                }}
               >
-                Assign {selectedContacts.length} Contact(s) to Group
+                {selectedContacts.length > 0 ? `Assign ${selectedContacts.length} Contact(s) to Group` : 'Save & Close'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -712,7 +878,8 @@ export function GroupPage() {
             setGroupToDelete(null);
             setDeleteContactsToo(false);
           }
-        }}>
+        }
+        }>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>

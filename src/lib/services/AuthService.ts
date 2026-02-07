@@ -228,6 +228,13 @@ export class AuthService {
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
+    } finally {
+      // Clear local storage preferences - ALWAYS run this
+      try {
+        localStorage.removeItem('xenderin_hide_safety_warning');
+      } catch (e) {
+        console.error('Failed to clear local storage:', e);
+      }
     }
   }
 
@@ -476,18 +483,22 @@ export class AuthService {
     try {
       console.log('Checking app version...');
 
-      // Get the latest version from Supabase
+      // Detect current platform (windows or macos)
+      const currentPlatform = this.detectPlatform();
+      console.log(`Detected platform: ${currentPlatform}`);
+
+      // Get the latest version from Supabase for the current platform
       const { data, error } = await supabase
         .from('app_versions')
         .select('*')
         .eq('is_latest', true)
-        .eq('platform', 'all') // Assuming 'all' or specific platform like 'windows'
+        .eq('platform', currentPlatform)
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No latest version found
-          console.log('No latest version info found in database.');
+          // No latest version found for this platform
+          console.log(`No latest version info found for platform: ${currentPlatform}`);
           return { updateAvailable: false };
         }
         console.error('Error fetching app version:', error);
@@ -514,6 +525,22 @@ export class AuthService {
       console.error('Check app version error:', error);
       return { updateAvailable: false };
     }
+  }
+
+  /**
+   * Detect current platform for version checking
+   * Returns 'windows' or 'macos'
+   */
+  private detectPlatform(): 'windows' | 'macos' {
+    // Check if running in Electron
+    if (typeof window !== 'undefined' && window.navigator) {
+      const platform = window.navigator.platform.toLowerCase();
+      if (platform.includes('mac') || platform.includes('darwin')) {
+        return 'macos';
+      }
+    }
+    // Default to windows (most common for this app)
+    return 'windows';
   }
 
   private isVersionOutdated(current: string, remote: string): boolean {

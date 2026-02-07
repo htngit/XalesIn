@@ -57,7 +57,61 @@ export function InboxPage() {
 
     // WhatsApp connection warning state
     const [showConnectionWarning, setShowConnectionWarning] = useState(false);
-    const [isCheckingConnection, setIsCheckingConnection] = useState(true);
+
+
+    // History Sync State
+    const [isSyncingHistory, setIsSyncingHistory] = useState(false);
+    const [syncStatusMessage, setSyncStatusMessage] = useState('');
+    const isSyncingHistoryRef = useRef(false);
+
+    // Keep ref in sync
+    useEffect(() => {
+        isSyncingHistoryRef.current = isSyncingHistory;
+    }, [isSyncingHistory]);
+
+    // Trigger History Sync on Mount (Once per session)
+    useEffect(() => {
+        const hasSynced = sessionStorage.getItem('hasSyncedHistory');
+        const triggerSync = async () => {
+            if (!hasSynced && window.electron?.whatsapp?.fetchHistory) {
+                try {
+                    console.log('[Inbox] Triggering on-demand history sync...');
+                    setIsSyncingHistory(true);
+                    setSyncStatusMessage(intl.formatMessage({ id: 'inbox.syncing.start', defaultMessage: 'Initializing history sync...' }));
+
+                    const result = await window.electron.whatsapp.fetchHistory();
+                    if (result.success) {
+                        sessionStorage.setItem('hasSyncedHistory', 'true');
+                    }
+                } catch (error) {
+                    console.error('[Inbox] History sync failed:', error);
+                }
+            }
+        };
+
+        // Trigger immediately (Connection guard is already delayed by 5s)
+        triggerSync();
+    }, [intl]);
+
+    // Listen for Sync Status Events
+    useEffect(() => {
+        if (!window.electron?.whatsapp?.onSyncStatus) return;
+
+        const unsubscribe = window.electron.whatsapp.onSyncStatus((status) => {
+            console.log('[Inbox] Sync status:', status);
+            if (status.step === 'complete' || status.step === 'error') {
+                setIsSyncingHistory(false);
+                setSyncStatusMessage('');
+            } else {
+                setIsSyncingHistory(true);
+                setSyncStatusMessage(status.message);
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, []);
 
     // Ref to hold the latest selectedConversation (to avoid stale closure in IPC callback)
     const selectedConversationRef = useRef<ConversationSummary | null>(null);
@@ -67,36 +121,32 @@ export function InboxPage() {
         selectedConversationRef.current = selectedConversation;
     }, [selectedConversation]);
 
-    // Check WhatsApp connection status on mount
+    // Check WhatsApp connection status: ONLY via listener (avoid race conditions with fetchHistory)
     useEffect(() => {
-        const checkWhatsAppConnection = async () => {
-            setIsCheckingConnection(true);
-            try {
-                const result = await window.electron.whatsapp.getStatus();
-                if (!result.ready) {
+        let unsubscribeStatus: (() => void) | undefined;
+        let isMounted = true;
+
+        const timer = setTimeout(() => {
+            if (!isMounted) return;
+            console.log('[Inbox] Registering connection status listener (after 5s delay)...');
+
+            // DON'T do an active check - just listen for events from now on.
+            // The active check was causing false positives during soft reconnects.
+            unsubscribeStatus = window.electron.whatsapp.onStatusChange((newStatus: string) => {
+                console.log('[Inbox] Status change received:', newStatus);
+                if (newStatus === 'disconnected' && !isSyncingHistoryRef.current) {
                     setShowConnectionWarning(true);
+                } else if (newStatus === 'ready') {
+                    setShowConnectionWarning(false);
                 }
-            } catch (err) {
-                console.error('[Inbox] Failed to check WhatsApp status:', err);
-                setShowConnectionWarning(true);
-            } finally {
-                setIsCheckingConnection(false);
-            }
-        };
+            });
 
-        checkWhatsAppConnection();
-
-        // Also listen for connection status changes
-        const unsubscribeStatus = window.electron.whatsapp.onStatusChange((newStatus: string) => {
-            if (newStatus === 'disconnected') {
-                setShowConnectionWarning(true);
-            } else if (newStatus === 'ready') {
-                setShowConnectionWarning(false);
-            }
-        });
+        }, 5000); // 5 seconds delay
 
         return () => {
-            unsubscribeStatus();
+            isMounted = false;
+            clearTimeout(timer);
+            if (unsubscribeStatus) unsubscribeStatus();
         };
     }, []);
 
@@ -177,7 +227,7 @@ export function InboxPage() {
                 // Use ref to get the CURRENT selectedConversation (avoids stale closure)
                 const currentConversation = selectedConversationRef.current;
                 if (currentConversation) {
-                    const normalizedPhone = messageData.from.replace('@c.us', '').replace(/[^\d]/g, '');
+                    const normalizedPhone = messageData.from.replace(/@s\.whatsapp\.net|@c\.us/g, '').replace(/[^\d]/g, '');
                     if (currentConversation.contact_phone.replace(/[^\d]/g, '') === normalizedPhone) {
                         console.log('[Inbox] Reloading messages for current conversation');
                         await loadMessages(currentConversation.contact_phone);
@@ -217,21 +267,11 @@ export function InboxPage() {
                 throw new Error(result.error || 'Failed to send message');
             }
 
-            // 2. Save to Database
-            await messageService.createOutboundMessage({
-                contact_phone: selectedConversation.contact_phone,
-                contact_name: selectedConversation.contact_name,
-                content: content,
-                message_type: asset ? asset.category : 'text',
-                has_media: !!asset,
-                media_url: asset ? (asset.file_url || asset.url) : undefined
-            });
-
-            // 3. Refresh Messages and Conversation List
-            await Promise.all([
-                loadMessages(selectedConversation.contact_phone),
-                loadConversations()
-            ]);
+            // 2. Wait a bit for the message to be saved by async listener
+            // Then refresh messages and conversation list
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await loadMessages(selectedConversation.contact_phone);
+            await loadConversations();
 
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -263,6 +303,40 @@ export function InboxPage() {
             console.error('Error updating tags:', error);
         }
     }, [contactService, messageService, loadConversations, selectedConversation]);
+
+    // Handle save new contact from chat
+    const handleSaveContact = useCallback(async (phone: string, name?: string) => {
+        try {
+            const newContact = await contactService.createContact({
+                phone: phone,
+                name: name || phone,
+                is_blocked: false,
+            });
+
+            toast.success(intl.formatMessage({
+                id: 'inbox.contactSaved',
+                defaultMessage: 'Contact saved successfully!'
+            }));
+
+            // Refresh conversations to update the contact_id
+            await loadConversations();
+
+            // Update selected conversation with the new contact_id
+            if (selectedConversation?.contact_phone === phone) {
+                setSelectedConversation(prev => prev ? {
+                    ...prev,
+                    contact_id: newContact.id,
+                    contact_name: newContact.name,
+                } : null);
+            }
+        } catch (error) {
+            console.error('Error saving contact:', error);
+            toast.error(intl.formatMessage({
+                id: 'inbox.contactSaveError',
+                defaultMessage: 'Failed to save contact'
+            }));
+        }
+    }, [contactService, intl, loadConversations, selectedConversation]);
 
     // Handle filter change
     const handleFilterChange = useCallback((newFilters: InboxFilters) => {
@@ -300,8 +374,9 @@ export function InboxPage() {
 
         if (existingConversation) {
             setSelectedConversation(existingConversation);
+            loadMessages(existingConversation.contact_phone);
         } else {
-            // Create temporary conversation object
+            // Create temporary conversation object for new chat
             const newConversation: ConversationSummary = {
                 contact_phone: contact.phone,
                 contact_name: contact.name,
@@ -313,23 +388,14 @@ export function InboxPage() {
                 last_activity: new Date().toISOString()
             };
             setSelectedConversation(newConversation);
+            // Clear old messages and load new contact's messages (likely empty for new chat)
+            setMessages([]);
+            loadMessages(contact.phone);
         }
         setIsNewChatOpen(false);
     };
 
-    // Show loading state while checking connection
-    if (isCheckingConnection) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-background">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                    <p className="text-muted-foreground">
-                        <FormattedMessage id="inbox.checkingConnection" defaultMessage="Checking WhatsApp connection..." />
-                    </p>
-                </div>
-            </div>
-        );
-    }
+
 
     return (
         <>
@@ -362,10 +428,10 @@ export function InboxPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            <div className="flex h-screen bg-background">
+            <div className="flex h-screen bg-background overflow-hidden">
                 {/* Sidebar: Conversation List */}
                 <div className={cn(
-                    "flex flex-col border-r border-border flex-shrink-0",
+                    "flex flex-col border-r border-border flex-shrink-0 h-full overflow-hidden",
                     "w-full md:w-[380px] lg:w-[420px]",
                     selectedConversation ? "hidden md:flex" : "flex"
                 )}>
@@ -396,6 +462,17 @@ export function InboxPage() {
                             </svg>
                         </button>
                     </div>
+
+
+                    {/* Sync Progress Banner */}
+                    {isSyncingHistory && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 text-xs flex items-center justify-between border-b border-blue-100 dark:border-blue-800">
+                            <span className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                                <div className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full" />
+                                {syncStatusMessage || 'Syncing history...'}
+                            </span>
+                        </div>
+                    )}
 
                     {/* Filters Panel */}
                     {showFilters && (
@@ -429,6 +506,7 @@ export function InboxPage() {
                                 conversation={selectedConversation}
                                 availableTags={tags}
                                 onUpdateTags={handleUpdateTags}
+                                onSaveContact={handleSaveContact}
                                 onBack={() => setSelectedConversation(null)}
                             />
                             <ChatWindow

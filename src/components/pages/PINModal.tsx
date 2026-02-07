@@ -9,6 +9,7 @@ import { PINValidation } from '@/lib/services/types';
 import { Lock, Shield, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { FormattedMessage, useIntl } from 'react-intl';
 import {
   Select,
   SelectContent,
@@ -32,6 +33,7 @@ interface ProfileOption {
 }
 
 export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
+  const intl = useIntl();
   const [pin, setPin] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -148,12 +150,12 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
     const pinString = pin.join('');
 
     if (pinString.length !== 6) {
-      setError('Please enter all 6 digits');
+      setError(intl.formatMessage({ id: 'auth.pin.error.incomplete' }));
       return;
     }
 
     if (!selectedProfile) {
-      setError('Please select a profile');
+      setError(intl.formatMessage({ id: 'auth.pin.select_profile' }));
       return;
     }
 
@@ -165,24 +167,24 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
       const profile = profiles.find(p => p.id === selectedProfile);
 
       if (!profile) {
-        setError('Profile not found');
+        setError(intl.formatMessage({ id: 'auth.pin.error.not_found' }));
         return;
       }
 
       // Validate PIN against the profile's stored PIN
       if (pinString === profile.pin) {
-        toast.success(`Welcome, ${profile.name}!`);
+        // toast.success removed - transitioned to full screen loader in App.tsx
         onPINValidated({
           is_valid: true,
           role: profile.role as 'owner' | 'staff'
         }, selectedProfile);
       } else {
-        toast.error('Invalid PIN');
-        setError('Invalid PIN. Please try again.');
+        toast.error(intl.formatMessage({ id: 'auth.pin.error.invalid' }));
+        setError(intl.formatMessage({ id: 'auth.pin.error.invalid' }));
       }
     } catch (err) {
       console.error('PIN validation error:', err);
-      setError('PIN validation failed. Please try again.');
+      setError(intl.formatMessage({ id: 'auth.pin.error.generic' }));
     } finally {
       setIsLoading(false);
     }
@@ -215,10 +217,14 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
               <Shield className="h-12 w-12 text-primary" />
             </div>
             <CardTitle className="text-2xl font-bold">
-              Enter PIN
+              <FormattedMessage id="auth.pin.title" defaultMessage="Enter PIN" />
             </CardTitle>
             <CardDescription>
-              Welcome back, {userName}! Please select your profile and enter PIN
+              <FormattedMessage
+                id="auth.pin.welcome"
+                defaultMessage="Welcome back, {name}! Please select your profile and enter PIN"
+                values={{ name: userName }}
+              />
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -226,13 +232,13 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
 
               {/* Profile Selection */}
               <div className="space-y-2">
-                <Label>Select Profile</Label>
+                <Label><FormattedMessage id="auth.pin.select_profile" defaultMessage="Select Profile" /></Label>
                 {isLoadingProfiles ? (
                   <div className="h-10 bg-muted animate-pulse rounded-md" />
                 ) : (
                   <Select value={selectedProfile} onValueChange={setSelectedProfile}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select profile" />
+                      <SelectValue placeholder={intl.formatMessage({ id: 'auth.pin.select_profile', defaultMessage: 'Select profile' })} />
                     </SelectTrigger>
                     <SelectContent>
                       {profiles.map((profile) => (
@@ -242,7 +248,7 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
                             <span>{profile.name}</span>
                             {profile.role === 'owner' && (
                               <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                                Owner
+                                <FormattedMessage id="auth.pin.profile.owner" defaultMessage="Owner" />
                               </span>
                             )}
                           </div>
@@ -254,7 +260,9 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
               </div>
 
               <div className="space-y-4">
-                <Label className="text-center block">Security PIN</Label>
+                <Label className="text-center block">
+                  <FormattedMessage id="auth.pin.label" defaultMessage="Security PIN" />
+                </Label>
                 <div className="flex justify-center gap-2" onPaste={handlePaste}>
                   {pin.map((digit, index) => (
                     <Input
@@ -287,20 +295,26 @@ export function PINModal({ onPINValidated, userName, userId }: PINModalProps) {
                   disabled={isLoading || isLoadingProfiles}
                   animation="scale"
                 >
-                  {isLoading ? 'Validating...' : 'Continue'}
+                  {isLoading
+                    ? intl.formatMessage({ id: 'auth.pin.validating', defaultMessage: 'Validating...' })
+                    : intl.formatMessage({ id: 'common.button.continue', defaultMessage: 'Continue' })}
                 </AnimatedButton>
 
                 <div className="text-center text-sm text-muted-foreground">
-                  Default PIN: <span className="font-mono font-semibold">123456</span>
+                  <FormattedMessage id="auth.pin.default_hint" defaultMessage="Default PIN:" /> <span className="font-mono font-semibold">123456</span>
                 </div>
               </div>
 
               <div className="text-xs text-center text-muted-foreground">
                 <div className="flex items-center justify-center gap-1 mb-1">
                   <Lock className="h-3 w-3" />
-                  <span>Secure PIN Verification</span>
+                  <span>
+                    <FormattedMessage id="auth.pin.secure_verification" defaultMessage="Secure PIN Verification" />
+                  </span>
                 </div>
-                <div>You can change your PIN in Settings</div>
+                <div>
+                  <FormattedMessage id="auth.pin.change_hint" defaultMessage="You can change your PIN in Settings" />
+                </div>
               </div>
             </form>
           </CardContent>

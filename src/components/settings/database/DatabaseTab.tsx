@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { SyncPreferencesCard } from './SyncPreferencesCard';
 import { SyncStatusCard } from './SyncStatusCard';
 import { DatabaseStatsCard } from './DatabaseStatsCard';
 import { CacheManagementCard } from './CacheManagementCard';
@@ -65,9 +66,12 @@ export function DatabaseTab() {
                         syncStatus={syncStatus}
                         onManualSync={handleManualSync}
                     />
+                    <SyncPreferencesCard />
+                </div>
+                <div className="space-y-6">
+                    <DatabaseStatsCard />
                     <CacheManagementCard />
                 </div>
-                <DatabaseStatsCard />
             </div>
         </div>
     );

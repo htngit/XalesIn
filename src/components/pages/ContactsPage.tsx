@@ -55,7 +55,9 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
-  MapPin
+  MapPin,
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
 
 // Placeholder content component for when data is loaded
@@ -140,14 +142,41 @@ function ContactsPageContent({
                       <Settings className="h-4 w-4 mr-2" />
                       {intl.formatMessage({ id: 'contacts.button.manage_groups', defaultMessage: 'Manage Groups' })}
                     </AnimatedButton>
-                    <AnimatedButton animation="scale" onClick={onUploadClick}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      {intl.formatMessage({ id: 'contacts.button.upload', defaultMessage: 'Upload Contacts' })}
+
+                    {/* Sync from Server Button */}
+                    <AnimatedButton
+                      animation="scale"
+                      variant="outline"
+                      onClick={onRefresh}
+                      disabled={isLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                      {isLoading
+                        ? intl.formatMessage({ id: 'contacts.button.syncing', defaultMessage: 'Syncing...' })
+                        : intl.formatMessage({ id: 'contacts.button.sync_server', defaultMessage: 'Sync from Server' })
+                      }
                     </AnimatedButton>
-                    <AnimatedButton animation="scale" onClick={handleAddContact}>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      {intl.formatMessage({ id: 'contacts.button.add', defaultMessage: 'Add Contact' })}
-                    </AnimatedButton>
+
+                    {/* Consolidated Add/Import Button */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <AnimatedButton animation="scale">
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.add', defaultMessage: 'Add Contact' })}
+                          <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                        </AnimatedButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleAddContact}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.add_individual', defaultMessage: 'Add Individual' })}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onUploadClick}>
+                          <Upload className="h-4 w-4 mr-2" />
+                          {intl.formatMessage({ id: 'contacts.button.upload', defaultMessage: 'Upload Contacts' })}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 )}
               </div>
@@ -284,12 +313,12 @@ function ContactsPageContent({
                               disabled={isLoading}
                             />
                           </TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
-                          <TableHead>{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
+                          <TableHead className="w-[200px] md:w-[250px]">{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
+                          <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
+                          <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
+                          <TableHead className="hidden md:table-cell">{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
+                          <TableHead className="hidden lg:table-cell w-[120px]">{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
+                          <TableHead className="w-[50px]">{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -301,8 +330,8 @@ function ContactsPageContent({
                               <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                               <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                              <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                              <TableCell className="hidden md:table-cell"><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
                               <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
                             </TableRow>
                           ))
@@ -328,41 +357,44 @@ function ContactsPageContent({
                                     aria-label={`Select ${contact.name}`}
                                   />
                                 </TableCell>
-                                <TableCell className="font-medium">{contact.name}</TableCell>
+                                <TableCell className="font-medium max-w-[200px] md:max-w-[250px] truncate" title={contact.name}>{contact.name}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center space-x-2">
-                                    <Phone className="h-4 w-4 text-muted-foreground" />
-                                    <span>{contact.phone}</span>
+                                    <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate">{contact.phone}</span>
                                   </div>
                                 </TableCell>
                                 <TableCell>
                                   {group ? (
-                                    <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                    <Badge variant="outline" className="flex items-center gap-1 w-fit max-w-[140px] truncate" title={group.name}>
                                       <div
-                                        className="w-3 h-3 rounded-full border"
+                                        className="w-3 h-3 rounded-full border flex-shrink-0"
                                         style={{ backgroundColor: group.color }}
                                       />
-                                      {group.name}
+                                      <span className="truncate">{group.name}</span>
                                     </Badge>
                                   ) : (
                                     <Badge variant="secondary">{intl.formatMessage({ id: 'contacts.badge.unknown_group', defaultMessage: 'Unknown Group' })}</Badge>
                                   )}
                                 </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-wrap gap-1">
+                                <TableCell className="hidden md:table-cell">
+                                  <div className="flex flex-wrap gap-1 max-w-[200px]">
                                     {contact.tags && contact.tags.length > 0 ? (
-                                      contact.tags.map((tag) => (
-                                        <Badge key={tag} variant="outline" className="text-xs">
-                                          <Tag className="h-3 w-3 mr-1" />
-                                          {tag}
+                                      contact.tags.slice(0, 2).map((tag) => (
+                                        <Badge key={tag} variant="outline" className="text-xs truncate max-w-[80px]" title={tag}>
+                                          <Tag className="h-3 w-3 mr-1 flex-shrink-0" />
+                                          <span className="truncate">{tag}</span>
                                         </Badge>
                                       ))
                                     ) : (
                                       <span className="text-muted-foreground text-sm">{intl.formatMessage({ id: 'contacts.badge.no_tags', defaultMessage: 'No tags' })}</span>
                                     )}
+                                    {contact.tags && contact.tags.length > 2 && (
+                                      <Badge variant="outline" className="text-xs">+{contact.tags.length - 2}</Badge>
+                                    )}
                                   </div>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="hidden lg:table-cell">
                                   <span className="text-sm text-muted-foreground">
                                     {new Date(contact.created_at).toLocaleDateString()}
                                   </span>
@@ -455,6 +487,30 @@ export function ContactsPage() {
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+
+  // Sync Status State
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Check sync status and listen for completion
+  useEffect(() => {
+    const checkStatus = () => {
+      if (contactService.isSyncInProgress()) {
+        setIsSyncingContacts(true);
+      } else if (isSyncingContacts) {
+        // If it WAS syncing, and now it's not, it finished
+        setIsSyncingContacts(false);
+        setRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Initial check
+    checkStatus();
+
+    // Poll periodically to check status
+    const interval = setInterval(checkStatus, 1000);
+    return () => clearInterval(interval);
+  }, [isSyncingContacts, contactService]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -597,13 +653,19 @@ export function ContactsPage() {
     setShowBulkDeleteDialog(false);
   };
 
-  const loadData = async () => {
+  const loadData = async (forceSync = false) => {
     try {
       setIsLoading(true);
       setError(null);
 
+      // Force sync from server before loading local data
+      if (forceSync) {
+        console.log('Force syncing contacts from server...');
+        await contactService.forceSync();
+      }
+
       const [contactsData, groupsData] = await Promise.all([
-        contactService.getContacts(), // Fetches fresh data from Dexie
+        contactService.getContacts(), // Fetches fresh data from Dexie (now updated by sync)
         groupService.getGroups()
       ]);
       setContacts(contactsData);
@@ -621,7 +683,8 @@ export function ContactsPage() {
     if (isInitialized) {
       loadData();
     }
-  }, [isInitialized, contactService, groupService]);
+  }, [isInitialized, refreshTrigger]);
+
 
   // Filter contacts effect - synchronous filtering logic
   useEffect(() => {
@@ -689,6 +752,14 @@ export function ContactsPage() {
 
   return (
     <>
+
+
+
+
+
+
+
+
       <ContactsPageContent
         contacts={contacts}
         filteredContacts={filteredContacts}
@@ -709,9 +780,9 @@ export function ContactsPage() {
         isBulkDeleting={isBulkDeleting}
         getGroupById={getGroupById}
         stats={stats}
-        isLoading={isLoading}
+        isLoading={isLoading || isSyncingContacts}
         onUploadClick={() => setShowUploadDialog(true)}
-        onRefresh={loadData}
+        onRefresh={() => loadData(true)}
         paginationComponent={
           <ContactsPagination
             totalItems={filteredContacts.length}

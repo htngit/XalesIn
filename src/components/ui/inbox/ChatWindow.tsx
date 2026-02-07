@@ -26,12 +26,57 @@ export function ChatWindow({ messages, isLoading, onSendMessage, selectedPhone }
         }
     }, [messages]);
 
-    // Group messages by date
+    // Group messages by date with deduplication
     const messagesByDate = React.useMemo(() => {
+        // 1. Deduplicate messages
+        const seenIds = new Set<string>();
+        // Fallback: Track content + direction + time for edge case deduplication
+        const seenContentKeys = new Set<string>();
+        const uniqueMessages: Message[] = [];
+
+        // Sort messages strictly by sent_at to ensure consistent ordering
+        const sortedInput = [...messages].sort((a, b) =>
+            new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+        );
+
+        for (const message of sortedInput) {
+            // Priority 1: Check Whatsapp Message ID (Global ID)
+            if (message.whatsapp_message_id) {
+                if (seenIds.has(message.whatsapp_message_id)) {
+                    continue; // Skip duplicate by WA ID
+                }
+                seenIds.add(message.whatsapp_message_id);
+            }
+            // Priority 2: Check Local ID (Internal ID)
+            // Note: If a message has BOTH, we tracked WA ID above. 
+            // If it ONLY has local ID (pending), we track local ID.
+            else if (message.id) {
+                if (seenIds.has(message.id)) {
+                    continue; // Skip duplicate by Local ID
+                }
+                seenIds.add(message.id);
+            }
+
+            // Priority 3: Content + Direction + Time Window (Fallback)
+            // This catches duplicates with mismatched IDs (optimistic vs synced)
+            const msgTime = new Date(message.sent_at).getTime();
+            // Round to 2-second window for matching
+            const timeWindow = Math.floor(msgTime / 2000);
+            const contentKey = `${message.direction}_${timeWindow}_${message.content?.substring(0, 50)}`;
+            if (seenContentKeys.has(contentKey)) {
+                console.log('[ChatWindow] Skipping duplicate by content fallback:', message.id);
+                continue;
+            }
+            seenContentKeys.add(contentKey);
+
+            uniqueMessages.push(message);
+        }
+
+        // 2. Group by date
         const groups: { date: string; messages: Message[] }[] = [];
         let currentDate = '';
 
-        for (const message of messages) {
+        for (const message of uniqueMessages) {
             const date = new Date(message.sent_at);
             const validDate = isNaN(date.getTime()) ? new Date() : date;
             const msgDate = validDate.toLocaleDateString();
