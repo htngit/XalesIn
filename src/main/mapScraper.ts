@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer';
-import { IpcMainInvokeEvent } from 'electron';
+
 import { ScrapedBusiness } from '../types/scraping';
 import * as fs from 'fs';
 import * as path from 'path';
