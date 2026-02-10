@@ -497,8 +497,13 @@ export class TemplateService {
         _version: syncMetadata._version
       };
 
-      // Update local database
-      await db.templates.update(id, updateData);
+      // Update local database (using put instead of update to handle missing local records)
+      // This ensures that even if the template was only found on server (via getTemplateById fallback above),
+      // it gets saved locally with the new updates.
+      await db.templates.put({
+        ...templateToUpdate,
+        ...updateData
+      });
 
       // Get updated record for sync
       const updatedTemplate = await db.templates.get(id);
@@ -514,7 +519,7 @@ export class TemplateService {
         return this.transformLocalTemplates([updatedTemplate])[0];
       }
 
-      throw new Error('Template update failed');
+      throw new Error('Template update failed: Could not verify saved record');
     } catch (error) {
       console.error('Error updating template:', error);
       throw new Error(handleDatabaseError(error));
