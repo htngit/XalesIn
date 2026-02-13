@@ -17,10 +17,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Contact, ContactGroup } from '@/lib/services/types';
+import { Contact, ContactGroup, LEAD_STATUSES } from '@/lib/services/types';
 import { ContactService } from '@/lib/services/ContactService';
 import { Loader2, Plus, X } from 'lucide-react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Textarea } from "@/components/ui/textarea";
 
 interface ContactModalProps {
   isOpen: boolean;
@@ -52,6 +59,19 @@ export function ContactModal({
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
+  // CRM State
+  const [leadStatus, setLeadStatus] = useState<string>('new');
+  const [leadSource, setLeadSource] = useState<string>('manual');
+  const [leadScore, setLeadScore] = useState<number>(0);
+  const [company, setCompany] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [dealValue, setDealValue] = useState<string>('');
+  const [nextFollowUp, setNextFollowUp] = useState('');
+  const [lostReason, setLostReason] = useState('');
+
   const memoizedGroups = useMemo(() => groups, [groups.length]);
 
   useEffect(() => {
@@ -61,11 +81,50 @@ export function ContactModal({
         setPhone(contact.phone);
         setGroupId(contact.group_id || '');
         setTags(contact.tags || []);
+
+        // CRM Fields
+        setLeadStatus(contact.lead_status || 'new');
+        setLeadSource(contact.lead_source || 'manual');
+        setLeadScore(contact.lead_score || 0);
+        setCompany(contact.company || '');
+        setJobTitle(contact.job_title || '');
+        setEmail(contact.email || '');
+        setAddress(contact.address || '');
+        setCity(contact.city || '');
+        setDealValue(contact.deal_value?.toString() || '');
+        if (contact.next_follow_up) {
+          // Format for datetime-local: YYYY-MM-DDThh:mm
+          try {
+            const date = new Date(contact.next_follow_up);
+            // Adjust to local ISO string for input
+            const localIso = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            setNextFollowUp(localIso);
+          } catch (e) {
+            setNextFollowUp('');
+          }
+        } else {
+          setNextFollowUp('');
+        }
+        setLostReason(contact.lost_reason || '');
+
       } else {
         setName('');
         setPhone('');
         setGroupId(memoizedGroups.length > 0 ? memoizedGroups[0].id : '');
         setTags([]);
+
+        // CRM Defaults
+        setLeadStatus('new');
+        setLeadSource('manual');
+        setLeadScore(0);
+        setCompany('');
+        setJobTitle('');
+        setEmail('');
+        setAddress('');
+        setCity('');
+        setDealValue('');
+        setNextFollowUp('');
+        setLostReason('');
       }
       setNewTag('');
     }
@@ -132,6 +191,18 @@ export function ContactModal({
         phone: phone.trim(),
         group_id: groupId,
         tags: tags,
+        // CRM Fields
+        lead_status: leadStatus,
+        lead_source: leadSource,
+        lead_score: leadScore,
+        company: company || undefined,
+        job_title: jobTitle || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        city: city || undefined,
+        deal_value: dealValue ? parseFloat(dealValue) : 0,
+        next_follow_up: nextFollowUp ? new Date(nextFollowUp).toISOString() : undefined,
+        lost_reason: lostReason || undefined,
       };
 
       if (contact) {
@@ -195,7 +266,7 @@ export function ContactModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {contact ? (
@@ -303,6 +374,144 @@ export function ContactModal({
               </div>
             )}
           </div>
+
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="crm-info">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <FormattedMessage id="contacts.modal.crm_section" defaultMessage="CRM & Lead Details" />
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="space-y-4 px-1">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="leadStatus">
+                      <FormattedMessage id="contacts.modal.status_label" defaultMessage="Lead Status" />
+                    </Label>
+                    <Select value={leadStatus} onValueChange={setLeadStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LEAD_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="leadSource">
+                      <FormattedMessage id="contacts.modal.source_label" defaultMessage="Source" />
+                    </Label>
+                    <Select value={leadSource} onValueChange={setLeadSource}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="import">Import</SelectItem>
+                        <SelectItem value="referral">Referral</SelectItem>
+                        <SelectItem value="website">Website</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="company">
+                      <FormattedMessage id="contacts.modal.company_label" defaultMessage="Company" />
+                    </Label>
+                    <Input
+                      id="company"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      placeholder="e.g. Acme Corp"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="jobTitle">
+                      <FormattedMessage id="contacts.modal.job_title_label" defaultMessage="Job Title" />
+                    </Label>
+                    <Input
+                      id="jobTitle"
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                      placeholder="e.g. Manager"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="dealValue">
+                      <FormattedMessage id="contacts.modal.deal_value_label" defaultMessage="Deal Value (Est.)" />
+                    </Label>
+                    <Input
+                      id="dealValue"
+                      type="number"
+                      value={dealValue}
+                      onChange={(e) => setDealValue(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="nextFollowUp">
+                      <FormattedMessage id="contacts.modal.follow_up_label" defaultMessage="Next Follow Up" />
+                    </Label>
+                    <Input
+                      id="nextFollowUp"
+                      type="datetime-local"
+                      value={nextFollowUp}
+                      onChange={(e) => setNextFollowUp(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="email@example.com"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Textarea
+                    id="address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Full address..."
+                    className="min-h-[60px]"
+                  />
+                </div>
+
+                {leadStatus === 'lost' && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="lostReason" className="text-destructive">
+                      <FormattedMessage id="contacts.modal.lost_reason_label" defaultMessage="Lost Reason *" />
+                    </Label>
+                    <Textarea
+                      id="lostReason"
+                      value={lostReason}
+                      onChange={(e) => setLostReason(e.target.value)}
+                      placeholder="Why was this deal lost?"
+                      className="border-destructive/50"
+                    />
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
 
         <DialogFooter>
@@ -319,6 +528,6 @@ export function ContactModal({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }

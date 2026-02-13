@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Quota } from '@/lib/services/types';
+import { Quota, ContactWithGroup } from '@/lib/services/types';
 import { useUser } from '@/lib/security/UserProvider';
 import { useServices } from '@/lib/services/ServiceContext';
 import { serviceManager } from '@/lib/services';
@@ -85,6 +85,7 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
 
   // Real‑time data
   const [quota, setQuota] = useState<Quota | null>(null);
+  // @ts-ignore - stats used in updateStats but reader might be missing or hidden
   const [stats, setStats] = useState({
     totalContacts: 0,
     totalTemplates: 0,
@@ -92,6 +93,8 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
     quotaRemaining: 0,
     quotaLimit: 0
   });
+  const [crmStats, setCrmStats] = useState<any>(null);
+  const [recentActivity, setRecentActivity] = useState<ContactWithGroup[]>([]);
 
   // Track if background sync is still running (for skeleton display)
   const [isSyncingData, setIsSyncingData] = useState(true);
@@ -246,10 +249,12 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
       }
 
       // Parallel fetch for efficiency - Offline First approach
-      const [currentQuota, contactStats, templateStats] = await Promise.all([
+      const [currentQuota, contactStats, templateStats, crmStatsData, recentActivityData] = await Promise.all([
         quotaService.getQuota(user.id),
         serviceManager.getContactService().getAllContacts(),
-        serviceManager.getTemplateService().getTemplates()
+        serviceManager.getTemplateService().getTemplates(),
+        serviceManager.getContactService().getCRMStats(),
+        serviceManager.getContactService().getRecentActivity()
       ]);
 
       if (currentQuota) {
@@ -265,6 +270,9 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
         quotaRemaining: currentQuota?.remaining || 0,
         quotaLimit: currentQuota?.messages_limit || 0
       });
+
+      setCrmStats(crmStatsData);
+      setRecentActivity(recentActivityData);
 
     } catch (e) {
       console.error('Error initializing user data:', e);
@@ -544,7 +552,11 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
             </div>
 
             {/* CRM Dashboard */}
-            <CRMDashboard totalLeads={stats.totalContacts} isSyncingData={isSyncingData} />
+            <CRMDashboard
+              stats={crmStats}
+              recentActivity={recentActivity}
+              isLoading={isSyncingData}
+            />
           </div>
         </main>
       </div>

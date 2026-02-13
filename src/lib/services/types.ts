@@ -74,6 +74,10 @@ export interface ContactGroup {
   updated_at: string;
 }
 
+// Lead status stages for CRM pipeline
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'negotiation', 'won', 'lost'] as const;
+export type LeadStatus = typeof LEAD_STATUSES[number];
+
 export interface Contact {
   id: string;
   name: string;
@@ -85,6 +89,20 @@ export interface Contact {
   notes?: string;
   is_blocked: boolean;
   last_interaction?: string;
+  // CRM fields
+  lead_status?: string;
+  lead_source?: string;
+  lead_score?: number;
+  assigned_to?: string;
+  company?: string;
+  job_title?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  deal_value?: number;
+  last_contacted_at?: string;
+  next_follow_up?: string;
+  lost_reason?: string;
   created_at: string;
   updated_at: string;
 }

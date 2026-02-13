@@ -2,48 +2,44 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, DollarSign, TrendingUp, Activity, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import { FormattedMessage } from "react-intl";
-import { Construction } from "lucide-react";
+// import { useState } from "react";
+// import { FormattedMessage } from "react-intl";
+// import { Construction } from "lucide-react"; // Overlay removed
 import { Skeleton } from "@/components/ui/skeleton";
+import { ContactWithGroup } from "@/lib/services/types";
+import { formatDistanceToNow } from "date-fns";
 
-interface CRMDashboardProps {
-    totalLeads?: number;
-    isSyncingData?: boolean;
+interface CRMStats {
+    totalLeads: number;
+    activeDeals: number;
+    winRate: number;
+    estimatedRevenue: number;
+    newLeadsThisMonth: number;
+    revenueGrowth: number;
 }
 
-export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashboardProps) {
-    const [showOverlay, setShowOverlay] = useState(true);
+interface CRMDashboardProps {
+    stats?: CRMStats;
+    recentActivity?: ContactWithGroup[];
+    // funnelData?: Record<string, number>; // Not used yet
+    isLoading?: boolean;
+}
+
+export function CRMDashboard({ stats, recentActivity = [], isLoading = false }: CRMDashboardProps) {
+    // const [showOverlay, setShowOverlay] = useState(true); // Overlay removed for Phase 4
+
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(value);
+    };
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 relative">
-            {/* Development Overlay */}
-            {showOverlay && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm rounded-lg border-2 border-dashed border-orange-200">
-                    <div className="bg-white p-8 rounded-xl shadow-2xl border border-orange-100 max-w-md text-center space-y-4 animate-in zoom-in-50 duration-300">
-                        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto ring-4 ring-orange-50">
-                            <Construction className="h-8 w-8 text-orange-600" />
-                        </div>
-                        <div className="space-y-2">
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                <FormattedMessage id="crm.dev.title" defaultMessage="Feature Under Development" />
-                            </h3>
-                            <p className="text-gray-500">
-                                <FormattedMessage
-                                    id="crm.dev.desc"
-                                    defaultMessage="The CRM module is currently being built. This is a Preview (Mockup) of what is coming soon."
-                                />
-                            </p>
-                        </div>
-                        <Button
-                            className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-                            onClick={() => setShowOverlay(false)}
-                        >
-                            <FormattedMessage id="crm.dev.button" defaultMessage="Okay, I Understand" />
-                        </Button>
-                    </div>
-                </div>
-            )}
+            {/* Development Overlay Removed */}
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -72,10 +68,10 @@ export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashb
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        {isSyncingData ? (
+                        {isLoading ? (
                             <Skeleton className="h-8 w-20" />
                         ) : (
-                            <div className="text-2xl font-bold">{totalLeads.toLocaleString()}</div>
+                            <div className="text-2xl font-bold">{(stats?.totalLeads || 0).toLocaleString()}</div>
                         )}
                         <p className="text-xs text-muted-foreground">Active leads from contacts</p>
                     </CardContent>
@@ -86,8 +82,12 @@ export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashb
                         <Activity className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">45</div>
-                        <p className="text-xs text-muted-foreground">+5 new this week</p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-20" />
+                        ) : (
+                            <div className="text-2xl font-bold">{stats?.activeDeals || 0}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Open deals in pipeline</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -96,8 +96,12 @@ export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashb
                         <TrendingUp className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">32.5%</div>
-                        <p className="text-xs text-muted-foreground">+2.4% from last month</p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-20" />
+                        ) : (
+                            <div className="text-2xl font-bold">{(stats?.winRate || 0).toFixed(1)}%</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Won deals / closed deals</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -106,8 +110,12 @@ export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashb
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">$124,500</div>
-                        <p className="text-xs text-muted-foreground">+12% from last month</p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-24" />
+                        ) : (
+                            <div className="text-2xl font-bold">{formatCurrency(stats?.estimatedRevenue || 0)}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Total value of open deals</p>
                     </CardContent>
                 </Card>
             </div>
@@ -121,21 +129,29 @@ export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashb
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {[
-                                { name: "TechCorp Enterprise Deal", stage: "Negotiation", value: "$15,000", date: "2 mins ago" },
-                                { name: "Small Biz Upgrade", stage: "Qualified", value: "$2,500", date: "1 hour ago" },
-                                { name: "Startup Launch Pack", stage: "Proposal", value: "$5,000", date: "3 hours ago" },
-                                { name: "Retail Chain Integration", stage: "Discovery", value: "$45,000", date: "Yesterday" },
-                                { name: "Consulting Services", stage: "Closed Won", value: "$8,500", date: "2 days ago" },
-                            ].map((deal, i) => (
-                                <div key={i} className="flex items-center">
-                                    <div className="space-y-1">
-                                        <p className="text-sm font-medium leading-none">{deal.name}</p>
-                                        <p className="text-xs text-muted-foreground">{deal.stage} • {deal.date}</p>
-                                    </div>
-                                    <div className="ml-auto font-medium">{deal.value}</div>
+                            {isLoading ? (
+                                <div className="space-y-3">
+                                    <Skeleton className="h-12 w-full" />
+                                    <Skeleton className="h-12 w-full" />
+                                    <Skeleton className="h-12 w-full" />
                                 </div>
-                            ))}
+                            ) : recentActivity.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">No recent activity.</p>
+                            ) : (
+                                recentActivity.map((contact) => (
+                                    <div key={contact.id} className="flex items-center">
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-medium leading-none truncate max-w-[200px]">{contact.name}</p>
+                                            <p className="text-xs text-muted-foreground capitalize">
+                                                {contact.lead_status || 'new'} • {contact.updated_at ? formatDistanceToNow(new Date(contact.updated_at), { addSuffix: true }) : 'Recently'}
+                                            </p>
+                                        </div>
+                                        <div className="ml-auto font-medium">
+                                            {(contact.deal_value || 0) > 0 ? formatCurrency(contact.deal_value || 0) : '-'}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </CardContent>
                 </Card>

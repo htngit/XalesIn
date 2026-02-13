@@ -502,8 +502,9 @@ export class TemplateService {
       // it gets saved locally with the new updates.
       await db.templates.put({
         ...templateToUpdate,
-        ...updateData
-      });
+        ...updateData,
+        category: updates.category || templateToUpdate!.category || 'general'
+      } as LocalTemplate);
 
       // Get updated record for sync
       const updatedTemplate = await db.templates.get(id);

@@ -1,4 +1,4 @@
-import { Contact, ContactWithGroup } from './types';
+import { Contact, ContactWithGroup, LeadStatus } from './types';
 import { supabase, handleDatabaseError } from '../supabase';
 import { db, LocalContact } from '../db';
 import { SyncManager } from '../sync/SyncManager';
@@ -194,6 +194,20 @@ export class ContactService {
           tags: sanitizeArray(standardized.tags, 'tags', (tag): tag is string => typeof tag === 'string'),
           notes: sanitizeString(standardized.notes, 'notes', 1000),
           is_blocked: sanitizeBoolean(standardized.is_blocked, 'is_blocked'),
+          // CRM Fields - Pass through if present, otherwise set defaults or undefined
+          lead_status: standardized.lead_status || 'new',
+          lead_source: standardized.lead_source || 'whatsapp',
+          lead_score: standardized.lead_score || 0,
+          assigned_to: standardized.assigned_to,
+          company: sanitizeString(standardized.company, 'company', 255),
+          job_title: sanitizeString(standardized.job_title, 'job_title', 255),
+          email: sanitizeString(standardized.email, 'email', 255),
+          address: sanitizeString(standardized.address, 'address', 1000),
+          city: sanitizeString(standardized.city, 'city', 255),
+          deal_value: standardized.deal_value || 0,
+          last_contacted_at: standardized.last_contacted_at,
+          next_follow_up: standardized.next_follow_up,
+          lost_reason: sanitizeString(standardized.lost_reason, 'lost_reason', 1000),
           groups: undefined // Will be enriched separately
         };
 
@@ -225,6 +239,7 @@ export class ContactService {
           tags: [],
           notes: '',
           is_blocked: false,
+          lead_status: 'new',
           created_at: toISOString(new Date()),
           updated_at: toISOString(new Date())
         } as ContactWithGroup;
@@ -1539,6 +1554,156 @@ export class ContactService {
       conflicts,
       syncManagerStatus: this.syncManager.getStatus()
     };
+  }
+
+  /**
+   * Get contacts filtered by lead status (CRM Pipeline)
+   */
+  async getContactsByLeadStatus(status: LeadStatus): Promise<ContactWithGroup[]> {
+    try {
+      const masterUserId = await this.getMasterUserId();
+
+      // Query IndexedDB using the new index
+      // Using filter for flexible matching just in case index isn't 100% ready or old version exists
+      const localContacts = await db.contacts
+        .where('master_user_id')
+        .equals(masterUserId)
+        .and(c => !c._deleted && c.lead_status === status)
+        .toArray();
+
+      return this.enrichContactsWithGroups(localContacts);
+    } catch (error) {
+      console.error(`Error fetching contacts with status ${status}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Update contact lead status directly (Pipeline Drag & Drop optimization)
+   */
+  async updateLeadStatus(contactId: string, status: LeadStatus, lostReason?: string): Promise<boolean> {
+    try {
+      const updateData: any = { lead_status: status };
+
+      // If lost, require/save lost_reason
+      if (status === 'lost' && lostReason) {
+        updateData.lost_reason = lostReason;
+      }
+
+      // If moving to won, maybe set deal_value? (optional future enhancement)
+
+      const result = await this.updateContact(contactId, updateData);
+      return !!result;
+    } catch (error) {
+      console.error(`Error updating lead status for ${contactId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get CRM Statistics for Dashboard
+   * Aggregates local data for performance
+   */
+  async getCRMStats(): Promise<{
+    totalLeads: number;
+    activeDeals: number;
+    winRate: number;
+    estimatedRevenue: number;
+    newLeadsThisMonth: number;
+    revenueGrowth: number; // Mocked for now (needs historical data)
+  }> {
+    await this.getMasterUserId();
+
+    const contacts = await db.contacts
+      .where('master_user_id')
+      .equals(this.masterUserId!)
+      .and(c => !c._deleted)
+      .toArray();
+
+    const totalLeads = contacts.length;
+
+    // Active deals: deal_value > 0 AND status is active (not won/lost/new)
+    // Actually, "Active Deals" usually means anything in pipeline except Closed/Lost
+    // Let's define Active as: status IN ['contacted', 'qualified', 'negotiation'] OR (value > 0 AND status != 'lost' AND status != 'won')
+    const activeDeals = contacts.filter(c => {
+      const status = c.lead_status || 'new';
+      return (status !== 'won' && status !== 'lost' && status !== 'new') || ((c.deal_value || 0) > 0 && status !== 'won' && status !== 'lost');
+    }).length;
+
+    // Win Rate: Won / (Won + Lost)
+    const wonCount = contacts.filter(c => c.lead_status === 'won').length;
+    const lostCount = contacts.filter(c => c.lead_status === 'lost').length;
+    const closedCount = wonCount + lostCount;
+    const winRate = closedCount > 0 ? (wonCount / closedCount) * 100 : 0;
+
+    // Estimated Revenue: Sum of deal_value for ACTIVE deals (not won/lost)
+    // Or should it be weighted? For simplicity: Sum of all open deal values.
+    const estimatedRevenue = contacts
+      .filter(c => {
+        const status = c.lead_status || 'new';
+        return status !== 'won' && status !== 'lost';
+      })
+      .reduce((sum, c) => sum + (c.deal_value || 0), 0);
+
+    // New leads this month
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const newLeadsThisMonth = contacts.filter(c => c.created_at >= firstDay).length;
+
+    return {
+      totalLeads,
+      activeDeals,
+      winRate,
+      estimatedRevenue,
+      newLeadsThisMonth,
+      revenueGrowth: 0 // Placeholder
+    };
+  }
+
+  /**
+   * Get Sales Funnel Data
+   * Counts contacts per stage
+   */
+  async getSalesFunnel(): Promise<Record<string, number>> {
+    await this.getMasterUserId();
+    const contacts = await db.contacts
+      .where('master_user_id')
+      .equals(this.masterUserId!)
+      .and(c => !c._deleted)
+      .toArray();
+
+    const funnel: Record<string, number> = {
+      new: 0,
+      contacted: 0,
+      qualified: 0,
+      negotiation: 0,
+      won: 0,
+      lost: 0
+    };
+
+    contacts.forEach(c => {
+      const status = c.lead_status || 'new';
+      if (funnel[status] !== undefined) {
+        funnel[status]++;
+      } else {
+        funnel['new']++;
+      }
+    });
+
+    return funnel;
+  }
+
+  async getRecentActivity(limit = 5): Promise<ContactWithGroup[]> {
+    await this.getMasterUserId();
+    // Get contacts updated recently with non-new status or high deal value
+    const contacts = await db.contacts
+      .where('master_user_id')
+      .equals(this.masterUserId!)
+      .and(c => !c._deleted)
+      .reverse()
+      .sortBy('updated_at');
+
+    return this.transformLocalContacts(contacts.slice(0, limit));
   }
 
   /**

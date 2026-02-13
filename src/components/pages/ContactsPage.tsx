@@ -3,7 +3,7 @@ import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { useServices } from '@/lib/services/ServiceContext';
 import { handleServiceError } from '@/lib/utils/errorHandling';
-import { Contact, ContactGroup } from '@/lib/services/types';
+import { Contact, ContactGroup, LEAD_STATUSES, LeadStatus } from '@/lib/services/types';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,8 +57,31 @@ import {
   Trash2,
   MapPin,
   RefreshCw,
-  ChevronDown
+
+  ChevronDown,
+  LayoutList,
+  Filter
 } from 'lucide-react';
+import { PipelineTab } from './contacts/PipelineTab';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'new': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'contacted': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'qualified': return 'bg-purple-100 text-purple-800 border-purple-200';
+    case 'negotiation': return 'bg-orange-100 text-orange-800 border-orange-200';
+    case 'won': return 'bg-green-100 text-green-800 border-green-200';
+    case 'lost': return 'bg-red-100 text-red-800 border-red-200';
+    default: return 'bg-gray-100 text-gray-800 border-gray-200';
+  }
+};
 
 // Placeholder content component for when data is loaded
 function ContactsPageContent({
@@ -67,6 +90,8 @@ function ContactsPageContent({
   paginatedContacts,
   searchQuery,
   setSearchQuery,
+  statusFilter,
+  setStatusFilter,
   selectedContactIds,
   handleSelectContact,
   handleSelectAll,
@@ -84,7 +109,9 @@ function ContactsPageContent({
   onUploadClick,
   onRefresh,
   groups,
-  paginationComponent
+  paginationComponent,
+  onCardClick,
+  onContactMove
 }: {
   contacts: Contact[];
   filteredContacts: Contact[];
@@ -92,6 +119,8 @@ function ContactsPageContent({
   groups: ContactGroup[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  statusFilter: string;
+  setStatusFilter: (status: string) => void;
   selectedContactIds: Set<string>;
   handleSelectContact: (contactId: string, checked: boolean) => void;
   handleSelectAll: (checked: boolean) => void;
@@ -109,6 +138,8 @@ function ContactsPageContent({
   onUploadClick: () => void;
   onRefresh: () => void;
   paginationComponent: React.ReactNode;
+  onCardClick: (contact: Contact) => void;
+  onContactMove: (contactId: string, newStatus: LeadStatus) => void;
 }) {
   const navigate = useNavigate();
   const intl = useIntl();
@@ -186,6 +217,10 @@ function ContactsPageContent({
                   <Users className="mr-2 h-4 w-4" />
                   List Contacts
                 </TabsTrigger>
+                <TabsTrigger value="pipeline" className="w-[150px]">
+                  <LayoutList className="mr-2 h-4 w-4" />
+                  Pipeline
+                </TabsTrigger>
                 <TabsTrigger value="scrap" className="w-[150px]">
                   <MapPin className="mr-2 h-4 w-4" />
                   Scrap Maps
@@ -252,8 +287,8 @@ function ContactsPageContent({
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-4">
-                    <div className="flex-1">
-                      <div className="relative">
+                    <div className="flex-1 flex gap-4">
+                      <div className="relative flex-1">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
                           placeholder={intl.formatMessage({ id: 'contacts.search.placeholder', defaultMessage: 'Search contacts by name, phone, or tags...' })}
@@ -261,6 +296,24 @@ function ContactsPageContent({
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="pl-10"
                         />
+                      </div>
+                      <div className="w-[180px]">
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <SelectTrigger>
+                            <div className="flex items-center gap-2">
+                              <Filter className="h-4 w-4" />
+                              <SelectValue placeholder="All Statuses" />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Statuses</SelectItem>
+                            {LEAD_STATUSES.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
@@ -316,6 +369,7 @@ function ContactsPageContent({
                           <TableHead className="w-[200px] md:w-[250px]">{intl.formatMessage({ id: 'contacts.list.header.name', defaultMessage: 'Name' })}</TableHead>
                           <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.phone', defaultMessage: 'Phone' })}</TableHead>
                           <TableHead className="w-[150px]">{intl.formatMessage({ id: 'contacts.list.header.group', defaultMessage: 'Group' })}</TableHead>
+                          <TableHead className="w-[120px]">{intl.formatMessage({ id: 'contacts.list.header.status', defaultMessage: 'Status' })}</TableHead>
                           <TableHead className="hidden md:table-cell">{intl.formatMessage({ id: 'contacts.list.header.tags', defaultMessage: 'Tags' })}</TableHead>
                           <TableHead className="hidden lg:table-cell w-[120px]">{intl.formatMessage({ id: 'contacts.list.header.created', defaultMessage: 'Created' })}</TableHead>
                           <TableHead className="w-[50px]">{intl.formatMessage({ id: 'contacts.list.header.actions', defaultMessage: 'Actions' })}</TableHead>
@@ -330,6 +384,7 @@ function ContactsPageContent({
                               <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                               <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                              <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
                               <TableCell className="hidden md:table-cell"><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
                               <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
                               <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
@@ -376,6 +431,11 @@ function ContactsPageContent({
                                   ) : (
                                     <Badge variant="secondary">{intl.formatMessage({ id: 'contacts.badge.unknown_group', defaultMessage: 'Unknown Group' })}</Badge>
                                   )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge className={getStatusColor(contact.lead_status || 'new')} variant="outline">
+                                    {(contact.lead_status || 'new').charAt(0).toUpperCase() + (contact.lead_status || 'new').slice(1)}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="hidden md:table-cell">
                                   <div className="flex flex-wrap gap-1 max-w-[200px]">
@@ -436,6 +496,14 @@ function ContactsPageContent({
               </div>
             </TabsContent>
 
+            <TabsContent value="pipeline" className="h-[calc(100vh-220px)]">
+              <PipelineTab
+                contacts={filteredContacts}
+                onContactMove={onContactMove}
+                onCardClick={onCardClick}
+              />
+            </TabsContent>
+
             <TabsContent value="scrap">
               <ScrapTab groups={groups} existingContacts={contacts} onContactsSaved={onRefresh} />
             </TabsContent>
@@ -478,6 +546,7 @@ export function ContactsPage() {
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteContactId, setDeleteContactId] = useState<string | null>(null);
@@ -653,6 +722,31 @@ export function ContactsPage() {
     setShowBulkDeleteDialog(false);
   };
 
+  const handleContactMove = async (contactId: string, newStatus: LeadStatus) => {
+    // Optimistic update
+    const previousContacts = [...contacts];
+    setContacts(prev => prev.map(c =>
+      c.id === contactId ? { ...c, lead_status: newStatus } : c
+    ));
+
+    try {
+      await contactService.updateLeadStatus(contactId, newStatus);
+      toast({
+        title: intl.formatMessage({ id: 'contacts.notification.status_updated', defaultMessage: 'Status Updated' }),
+        description: intl.formatMessage({ id: 'contacts.notification.status_updated_desc', defaultMessage: 'Contact moved to {status}' }, { status: newStatus }),
+      });
+    } catch (error) {
+      console.error('Error updating status:', error);
+      // Revert on failure
+      setContacts(previousContacts);
+      toast({
+        title: intl.formatMessage({ id: 'common.status.error', defaultMessage: 'Error' }),
+        description: intl.formatMessage({ id: 'contacts.notification.status_update_failed', defaultMessage: 'Failed to update contact status.' }),
+        variant: "destructive",
+      });
+    }
+  };
+
   const loadData = async (forceSync = false) => {
     try {
       setIsLoading(true);
@@ -704,10 +798,15 @@ export function ContactsPage() {
       });
     }
 
+    // Filter by status
+    if (statusFilter && statusFilter !== 'all') {
+      filtered = filtered.filter(contact => (contact.lead_status || 'new') === statusFilter);
+    }
+
     setFilteredContacts(filtered);
     // Reset to first page when contacts or search query changes
     setCurrentPage(1);
-  }, [contacts, searchQuery, groups]);
+  }, [contacts, searchQuery, statusFilter, groups]);
 
   // Pagination effect - calculate paginated contacts
   const paginatedContacts = useMemo(() => {
@@ -767,6 +866,8 @@ export function ContactsPage() {
         groups={groups}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
         selectedContactIds={selectedContactIds}
         handleSelectContact={handleSelectContact}
         handleSelectAll={handleSelectAll}
@@ -783,6 +884,12 @@ export function ContactsPage() {
         isLoading={isLoading || isSyncingContacts}
         onUploadClick={() => setShowUploadDialog(true)}
         onRefresh={() => loadData(true)}
+        onCardClick={(contact) => {
+          setSelectedContact(contact);
+          setModalMode('edit');
+          setIsModalOpen(true);
+        }}
+        onContactMove={handleContactMove}
         paginationComponent={
           <ContactsPagination
             totalItems={filteredContacts.length}
