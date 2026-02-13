@@ -5,8 +5,14 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { Construction } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export function CRMDashboard() {
+interface CRMDashboardProps {
+    totalLeads?: number;
+    isSyncingData?: boolean;
+}
+
+export function CRMDashboard({ totalLeads = 0, isSyncingData = false }: CRMDashboardProps) {
     const [showOverlay, setShowOverlay] = useState(true);
 
     return (
@@ -66,8 +72,12 @@ export function CRMDashboard() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">1,248</div>
-                        <p className="text-xs text-muted-foreground">+18% from last month</p>
+                        {isSyncingData ? (
+                            <Skeleton className="h-8 w-20" />
+                        ) : (
+                            <div className="text-2xl font-bold">{totalLeads.toLocaleString()}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Active leads from contacts</p>
                     </CardContent>
                 </Card>
                 <Card>

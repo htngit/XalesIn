@@ -1,13 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, CreditCard, User, Database, Users } from 'lucide-react';
+import { ArrowLeft, CreditCard, User, Database, Users, Activity } from 'lucide-react';
 // import { PaymentTab } from '@/components/settings/payment/PaymentTab';
 import { ProfileTab } from '@/components/settings/profile/ProfileTab';
 import { DatabaseTab } from '@/components/settings/database/DatabaseTab';
 import { TeamTab } from '@/components/settings/team/TeamTab';
 import { FormattedMessage } from 'react-intl';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { UsageTab } from '@/components/settings/usage/UsageTab';
 
 interface SettingsPageProps {
   userName: string;
@@ -44,8 +45,8 @@ export function SettingsPage({ userName }: SettingsPageProps) {
         </div>
 
         {/* Settings Tabs */}
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-auto lg:inline-grid mb-6">
+        <Tabs defaultValue="usage" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-auto lg:inline-grid mb-6">
             <a
               href="https://xalesin.space/pricing"
               target="_blank"
@@ -62,6 +63,15 @@ export function SettingsPage({ userName }: SettingsPageProps) {
                 </span>
               </div>
             </a>
+            <TabsTrigger value="usage" className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                <FormattedMessage id="settings.tab.usage" defaultMessage="Usage & Quota" />
+              </span>
+              <span className="sm:hidden">
+                <FormattedMessage id="settings.tab.usage.short" defaultMessage="Usage" />
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">
@@ -94,6 +104,10 @@ export function SettingsPage({ userName }: SettingsPageProps) {
           {/* <TabsContent value="payment">
             <PaymentTab />
           </TabsContent> */}
+
+          <TabsContent value="usage">
+            <UsageTab />
+          </TabsContent>
 
           <TabsContent value="profile">
             <ProfileTab />
