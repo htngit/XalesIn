@@ -569,6 +569,7 @@ export class AppDatabase extends Dexie {
       // Note: syncQueue doesn't have master_user_id field, so we skip it
       this.messageJobs.where('master_user_id').equals(masterUserId).delete(),
       this.messages.where('master_user_id').equals(masterUserId).delete(),
+      this.syncQueue.clear(), // Clear all pending sync operations on logout for safety
     ]);
 
     // Delete asset blobs for the user's assets
@@ -601,6 +602,7 @@ export class AppDatabase extends Dexie {
         // Note: syncQueue doesn't have master_user_id field, so we skip it
         this.messageJobs.where('master_user_id').equals(masterUserId).delete(),
         this.messages.where('master_user_id').equals(masterUserId).delete(),
+        this.syncQueue.clear(), // Clear all pending sync operations on logout for safety
       ];
 
       // Execute all deletion operations in parallel

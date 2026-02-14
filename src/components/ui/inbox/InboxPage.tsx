@@ -69,15 +69,24 @@ export function InboxPage() {
         isSyncingHistoryRef.current = isSyncingHistory;
     }, [isSyncingHistory]);
 
-    // Trigger History Sync on Mount (Once per session)
+    // Trigger History Sync on Mount (Once per session) - ONLY IF READY
     useEffect(() => {
-        const hasSynced = sessionStorage.getItem('hasSyncedHistory');
-        const triggerSync = async () => {
-            if (!hasSynced && window.electron?.whatsapp?.fetchHistory) {
+        const triggerSyncIfReady = async () => {
+            const hasSynced = sessionStorage.getItem('hasSyncedHistory');
+            if (hasSynced) return;
+
+            if (window.electron?.whatsapp?.fetchHistory && window.electron?.whatsapp?.getStatus) {
                 try {
-                    console.log('[Inbox] Triggering on-demand history sync...');
+                    // Check status first - ONLY trigger if already connected
+                    const status = await window.electron.whatsapp.getStatus();
+                    if (!status.ready && status.status !== 'ready') {
+                        console.log('[Inbox] WhatsApp not ready (status:', status.status, '). Skipping history sync.');
+                        return;
+                    }
+
+                    console.log('[Inbox] Triggering on-demand history sync (Connection Active)...');
                     setIsSyncingHistory(true);
-                    setSyncStatusMessage(intl.formatMessage({ id: 'inbox.syncing.start', defaultMessage: 'Initializing history sync...' }));
+                    setSyncStatusMessage('Initializing history sync...');
 
                     const result = await window.electron.whatsapp.fetchHistory();
                     if (result.success) {
@@ -89,28 +98,8 @@ export function InboxPage() {
             }
         };
 
-        // Trigger immediately (Connection guard is already delayed by 5s)
-        triggerSync();
-    }, [intl]);
-
-    // Listen for Sync Status Events
-    useEffect(() => {
-        if (!window.electron?.whatsapp?.onSyncStatus) return;
-
-        const unsubscribe = window.electron.whatsapp.onSyncStatus((status) => {
-            console.log('[Inbox] Sync status:', status);
-            if (status.step === 'complete' || status.step === 'error') {
-                setIsSyncingHistory(false);
-                setSyncStatusMessage('');
-            } else {
-                setIsSyncingHistory(true);
-                setSyncStatusMessage(status.message);
-            }
-        });
-
-        return () => {
-            unsubscribe();
-        };
+        // Trigger immediately
+        triggerSyncIfReady();
     }, []);
 
     // Ref to hold the latest selectedConversation (to avoid stale closure in IPC callback)
@@ -188,6 +177,35 @@ export function InboxPage() {
         }
     }, [messageService, loadConversations]);
 
+    // Listen for Sync Status Events
+    useEffect(() => {
+        if (!window.electron?.whatsapp?.onSyncStatus) return;
+
+        const unsubscribe = window.electron.whatsapp.onSyncStatus(async (status) => {
+            console.log('[Inbox] Sync status:', status);
+            if (status.step === 'complete' || status.step === 'error') {
+                setIsSyncingHistory(false);
+                setSyncStatusMessage('');
+
+                // After history sync completes, force one refresh to render newly synced chats.
+                if (status.step === 'complete') {
+                    await loadConversations();
+                    const currentConversation = selectedConversationRef.current;
+                    if (currentConversation) {
+                        await loadMessages(currentConversation.contact_phone);
+                    }
+                }
+            } else {
+                setIsSyncingHistory(true);
+                setSyncStatusMessage(status.message);
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [loadConversations, loadMessages]);
+
     // Initial load
     useEffect(() => {
         const initialize = async () => {
@@ -222,6 +240,14 @@ export function InboxPage() {
             try {
                 console.log('[Inbox] Incoming message received:', messageData.from);
                 await messageService.createFromIncomingWhatsApp(messageData);
+
+                // PERFORMANCE OPTIMIZATION:
+                // If we are currently syncing history, DO NOT spam the UI with reloads for every message.
+                // We will trigger a full reload once the sync is complete.
+                if (isSyncingHistoryRef.current) {
+                    return;
+                }
+
                 await loadConversations();
 
                 // Use ref to get the CURRENT selectedConversation (avoids stale closure)

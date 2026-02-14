@@ -874,6 +874,23 @@ export class SyncManager {
   }
 
   /**
+   * Reset in-memory sync state and caches
+   * Crucial for logout to prevent data leakage between user sessions
+   */
+  clearInMemoryState(): void {
+    try {
+      this.syncCache.clear();
+      this.compressionCache.clear();
+      this.retryDelays.clear();
+      this._tableSyncInProgress.clear();
+      this.resetMetrics();
+      console.log('SyncManager in-memory state cleared');
+    } catch (error) {
+      console.error('Error clearing in-memory state:', error);
+    }
+  }
+
+  /**
    * Enhanced cleanup with comprehensive resource management
    */
   destroy() {

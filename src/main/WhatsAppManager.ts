@@ -43,6 +43,8 @@ export class WhatsAppManager {
 
     private isStarted: boolean = false; // Guard to prevent auto-connect before explicit start
     private isHistorySyncActive: boolean = false; // Guard to suppress generic messages during history sync
+    private historySyncProgressCount = 0; // Track synced messages count
+    private historySyncTimeout: NodeJS.Timeout | null = null; // Timer for debouncing sync completion
 
     // File download cache
     private fileCache: Map<string, string> = new Map();
@@ -407,6 +409,35 @@ export class WhatsAppManager {
                 // Send to Renderer (Inbox/Frontend) for storage and display
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                     this.mainWindow.webContents.send('whatsapp:message-received', payload);
+                }
+
+                // IMPROVED SYNC FEEDBACK:
+                // If history sync is active, emit periodic progress events.
+                // This ensures the UI Banner appears even if the initial 'start' event was missed.
+                if (this.isHistorySyncActive) {
+                    this.historySyncProgressCount = (this.historySyncProgressCount || 0) + 1;
+
+                    // Emit every 50 messages to avoid IPC spam
+                    if (this.historySyncProgressCount % 50 === 0) {
+                        this.mainWindow?.webContents.send('whatsapp:sync-status', {
+                            step: 'progress',
+                            message: `Syncing history... (${this.historySyncProgressCount} messages)`
+                        });
+                    }
+
+                    // DEBOUNCED COMPLETION:
+                    // Every time we receive a message during sync, reset the completion timer.
+                    // If no messages arrive for 5 seconds, we assume history fetch is done.
+                    if (this.historySyncTimeout) {
+                        clearTimeout(this.historySyncTimeout);
+                    }
+
+                    this.historySyncTimeout = setTimeout(() => {
+                        console.log('[WhatsAppManager] No more history messages received for 5s. Marking sync as complete.');
+                        this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'complete', message: 'History sync complete' });
+                        this.isHistorySyncActive = false;
+                        this.historySyncTimeout = null;
+                    }, 5000);
                 }
 
                 // Pass to MessageReceiverWorker if needed (for other logic)
@@ -782,14 +813,12 @@ export class WhatsAppManager {
         this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'start', message: 'Initializing history fetch...' });
 
         try {
-            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'disconnecting', message: 'Preparing connection...' });
+            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'disconnecting', message: 'Preparing history fetch...' });
 
-            // Disconnect without clearing session
-            await this.disconnect(false);
+            // Removed explicit disconnect - allow connect(true) to handle it atomically
+            // await this.disconnect(false);
 
-            // Small delay to ensure clean state
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
+            this.historySyncProgressCount = 0; // Reset progress counter
             this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'connecting', message: 'Fetching history from WhatsApp...' });
 
             // Reconnect with syncHistory = true
@@ -797,21 +826,36 @@ export class WhatsAppManager {
 
             this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'waiting', message: 'Receiving history...' });
 
-            // Give it a moment (though messages will flow via listeners)
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // DEBOUNCED COMPLETION STRATEGY:
+            // We do NOT set 'complete' here anymore. 
+            // Instead, we start a "Silence Timer". If no messages arrive within 10 seconds, THEN we mark it as complete.
+            // This handles cases where history is empty OR where it takes a few seconds to start flowing.
+            if (this.historySyncTimeout) clearTimeout(this.historySyncTimeout);
 
-            this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'complete', message: 'History fetch active' });
+            this.historySyncTimeout = setTimeout(() => {
+                console.log('[WhatsAppManager] No history messages received within 10s of start. Marking empty sync as complete.');
+                this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'complete', message: 'History sync complete (No messages)' });
+                this.isHistorySyncActive = false;
+                this.historySyncTimeout = null;
+            }, 10000);
 
             return true;
         } catch (error) {
             console.error('[WhatsAppManager] Fetch history failed:', error);
             this.mainWindow?.webContents.send('whatsapp:sync-status', { step: 'error', message: 'History fetch failed' });
+
+            // CRITICAL FIX: Reset flag IMMEDIATELY on error so we can retry or auto-reconnect
+            this.isHistorySyncActive = false;
+
+            // Attempt to restore connection if it was dropped
+            try {
+                console.log('[WhatsAppManager] Attempting to restore connection after failed history fetch...');
+                await this.connect(false);
+            } catch (connErr) {
+                console.error('[WhatsAppManager] Failed to restore connection:', connErr);
+            }
+
             return false;
-        } finally {
-            // Reset flag after a delay to ensure "Connected" doesn't flash immediately if state updates
-            setTimeout(() => {
-                this.isHistorySyncActive = false;
-            }, 5000);
         }
     }
 

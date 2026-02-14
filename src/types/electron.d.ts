@@ -20,7 +20,7 @@ declare global {
                 onSyncStatus(callback: (status: { step: string; message: string }) => void): () => void;
                 resyncContacts(): Promise<boolean>;
                 fetchHistory(): Promise<{ success: boolean; error?: string }>;
-                getStatus(): Promise<{ ready: boolean }>;
+                getStatus(): Promise<{ status: string; ready: boolean }>;
                 connect(): Promise<{ success: boolean; error?: string }>;
                 disconnect(): Promise<void>;
                 pauseJob(jobId: string): Promise<void>;

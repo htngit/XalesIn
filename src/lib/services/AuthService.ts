@@ -247,23 +247,36 @@ export class AuthService {
         }
       }
 
-      // 2. Clear sync timestamps from localStorage
+      // 2. Clear sync state
       try {
         if (this.syncManager) {
           await this.syncManager.clearSyncTimestamps();
+          this.syncManager.clearInMemoryState();
         } else {
           const { syncManager } = await import('../sync/SyncManager');
           await syncManager.clearSyncTimestamps();
+          syncManager.clearInMemoryState();
         }
       } catch (e) {
-        console.error('[AuthService] Failed to clear sync timestamps:', e);
+        console.error('[AuthService] Failed to clear sync state:', e);
       }
 
-      // 3. Clear local storage preferences
+      // 3. Clear local storage preferences and session tracking
       try {
         localStorage.removeItem('xenderin_hide_safety_warning');
+        localStorage.removeItem('last_user_id');
       } catch (e) {
         console.error('[AuthService] Failed to clear local storage prefs:', e);
+      }
+
+      // 4. Disconnect WhatsApp (if in Electron environment)
+      try {
+        if (window.electron && window.electron.ipcRenderer) {
+          // Disconnect without clearing session files (as requested)
+          await window.electron.ipcRenderer.invoke('whatsapp:disconnect', false);
+        }
+      } catch (e) {
+        console.warn('[AuthService] Failed to disconnect WhatsApp (likely non-Electron env):', e);
       }
     }
   }

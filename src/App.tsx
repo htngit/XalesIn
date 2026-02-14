@@ -26,7 +26,7 @@ import { syncManager } from '@/lib/sync/SyncManager';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 import { toast as sonnerToast } from 'sonner';
-import { Loader2, Minus, Square } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { UserProvider, useUser } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
@@ -145,6 +145,7 @@ const ProtectedRoutes = ({
 };
 
 import { UpdateSplashScreen, AppUpdateInfo } from '@/components/pages/UpdateSplashScreen';
+import { SyncStatusBanner } from '@/components/ui/SyncStatusBanner';
 
 // ... (existing imports)
 
@@ -155,6 +156,7 @@ const MainApp = () => {
 
   const [pinData, setPinData] = useState<PINValidation | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ step: string; message: string } | null>(null);
 
 
   // const [isUnlocking, setIsUnlocking] ... (already above)
@@ -307,67 +309,35 @@ const MainApp = () => {
       return;
     }
 
-    const TOAST_ID = 'whatsapp-sync-toast'; // Singleton ID to prevent stacking
+
 
     const unsubscribeSyncStatus = window.electron?.whatsapp?.onSyncStatus?.((status: { step: string, message: string }) => {
       console.log('[App] 🔄 SYNC EVENT RECEIVED:', status.step, status.message);
 
+      // Update global sync status state
+      setSyncStatus(status);
+
       if (status.step === 'complete') {
-        // Dismiss custom loading toast first, then show clean success
-        sonnerToast.dismiss(TOAST_ID);
+        // Show success toast for completion
         sonnerToast.success(status.message, {
-          id: 'sync-complete-toast', // Unique ID to prevent duplicates
+          id: 'sync-complete-toast',
           duration: 4000,
         });
+        // Clear banner after delay
+        setTimeout(() => setSyncStatus(null), 3000);
         return;
       }
 
       if (status.step === 'error') {
-        // Dismiss custom loading toast first, then show clean error
-        sonnerToast.dismiss(TOAST_ID);
+        // Show error toast
         sonnerToast.error(status.message, {
-          id: 'sync-error-toast', // Unique ID to prevent duplicates
+          id: 'sync-error-toast',
           duration: 5000,
         });
+        // Clear banner after delay
+        setTimeout(() => setSyncStatus(null), 5000);
         return;
       }
-
-      // for 'start', 'connecting', 'disconnecting', 'waiting' -> Show Persistent Custom Toast
-      sonnerToast.custom((id) => (
-        <div className="flex flex-col gap-3 w-full max-w-[340px] bg-white dark:bg-zinc-950 border p-4 rounded-lg shadow-md overflow-hidden">
-          <div className="flex items-start gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0 grid gap-1">
-              <p className="font-medium text-sm text-zinc-950 dark:text-zinc-50 break-words leading-tight">
-                {status.message}
-              </p>
-              {/* Removed misleading hardcoded "Syncing contacts..." text */}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 border-t pt-2 mt-1 dark:border-zinc-800">
-            <button
-              onClick={() => sonnerToast.dismiss(id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 transition-colors"
-              title="Minimize (Process continues)"
-            >
-              <Minus className="h-3 w-3" />
-              Minimize
-            </button>
-            <button
-              onClick={() => setShowStopSyncConfirm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
-              title="Stop Process"
-            >
-              <Square className="h-3 w-3 fill-current" />
-              Hentikan
-            </button>
-          </div>
-        </div>
-      ), {
-        id: TOAST_ID, // Force reuse of same ID
-        duration: Infinity,
-      });
     });
 
     return () => {
@@ -472,6 +442,9 @@ const MainApp = () => {
             onLater={() => !updateInfo.is_mandatory && setUpdateInfo(null)}
           />
         )}
+
+        {/* Global Sync Status Banner */}
+        <SyncStatusBanner status={syncStatus} />
 
         {!isAuthenticated ? (
           // 1. Not Authenticated -> Public Routes
