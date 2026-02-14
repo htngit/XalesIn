@@ -169,7 +169,20 @@ export function validateContact(data: any): Contact | null {
       is_blocked: sanitizeBoolean(data.is_blocked, 'is_blocked'),
       last_interaction: data.last_interaction ? String(data.last_interaction) : undefined,
       created_at: String(data.created_at),
-      updated_at: String(data.updated_at)
+      updated_at: String(data.updated_at),
+      // CRM Fields
+      lead_status: data.lead_status ? String(data.lead_status) : undefined,
+      lead_source: data.lead_source ? String(data.lead_source) : undefined,
+      lead_score: sanitizeNumber(data.lead_score, 'lead_score', 0),
+      assigned_to: isValidUUID(data.assigned_to) ? data.assigned_to : undefined,
+      company: sanitizeString(data.company, 'company', 255),
+      job_title: sanitizeString(data.job_title, 'job_title', 255),
+      email: sanitizeString(data.email, 'email', 255),
+      address: sanitizeString(data.address, 'address', 1000),
+      city: sanitizeString(data.city, 'city', 255),
+      deal_value: sanitizeNumber(data.deal_value, 'deal_value', 0),
+      next_follow_up: data.next_follow_up ? String(data.next_follow_up) : undefined,
+      lost_reason: sanitizeString(data.lost_reason, 'lost_reason', 1000)
     };
 
     return validated;

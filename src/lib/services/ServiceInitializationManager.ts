@@ -6,7 +6,7 @@ import { TemplateService } from './TemplateService';
 import { QuotaService } from './QuotaService';
 import { AuthService } from './AuthService';
 import { PaymentService } from './PaymentService';
-import { SyncManager } from '../sync/SyncManager';
+import { SyncManager, syncManager } from '../sync/SyncManager';
 import { MessageService } from './MessageService';
 
 /**
@@ -110,11 +110,23 @@ export class ServiceInitializationManager {
 
     this.initializationPromise = (async () => {
       try {
-        // Initialize SyncManager first
-        if (this.syncManager) {
-          this.syncManager.destroy();
-        }
-        this.syncManager = new SyncManager();
+        // Cleanup existing services to prevent memory leaks during re-initialization
+        // Using "as any" to access cleanup method which we just added
+        if (this.quotaService) (this.quotaService as any).cleanup?.();
+        if (this.contactService) (this.contactService as any).cleanup?.();
+        // Add cleanup for other services as they get implemented
+        if (this.templateService) (this.templateService as any).cleanup?.();
+        if (this.groupService) (this.groupService as any).cleanup?.();
+        if (this.assetService) (this.assetService as any).cleanup?.();
+        if (this.historyService) (this.historyService as any).cleanup?.();
+        if (this.authService) (this.authService as any).cleanup?.();
+        if (this.paymentService) (this.paymentService as any).cleanup?.();
+        if (this.messageService) (this.messageService as any).cleanup?.();
+
+        // Use singleton SyncManager
+        this.syncManager = syncManager;
+        // Don't destroy the singleton, just ensure it's in a known state if needed
+        // this.syncManager.stopAutoSync();
 
         // Initialize in dependency order
         console.log('Initializing AuthService...');

@@ -441,11 +441,11 @@ export class AppDatabase extends Dexie {
     this.messages.hook('deleting', this.onDeleting.bind(this));
   }
 
-  // Flag to ignore hooks (for cache clearing)
+  // Flag to ignore hooks (for cache clearing only)
   private _ignoreHooks: boolean = false;
 
   /**
-   * Start cache clearing mode (ignoring hooks)
+   * Start cache clearing mode (ignoring hooks entirely)
    */
   startCacheClear() {
     this._ignoreHooks = true;
@@ -459,21 +459,24 @@ export class AppDatabase extends Dexie {
   }
 
   /**
-   * Enhanced creating hook with standardized timestamp utilities
+   * Enhanced creating hook with standardized timestamp utilities.
+   * SMART: If the caller already set _syncStatus (e.g. 'synced' from pull operations),
+   * the hook respects it instead of blindly overriding to 'pending'.
+   * This prevents the infinite loop where pulled records get re-marked as pending.
    */
   private onCreating(_primKey: any, obj: any, _trans: any) {
     if (this._ignoreHooks) return;
 
-    // Add standardized sync metadata
-    const syncMetadata = addSyncMetadata(obj, false);
-
     // Add standardized timestamps
     const timestamps = addTimestamps(obj, false);
 
-    // Apply standardized properties
-    obj._syncStatus = syncMetadata._syncStatus;
-    obj._lastModified = syncMetadata._lastModified;
-    obj._version = syncMetadata._version;
+    // SMART SYNC STATUS: Only default to 'pending' if caller hasn't explicitly set _syncStatus.
+    // Pull operations set _syncStatus: 'synced' BEFORE writing — respect that.
+    if (!obj._syncStatus || obj._syncStatus !== 'synced') {
+      obj._syncStatus = 'pending';
+    }
+    obj._lastModified = nowISO();
+    obj._version = obj._version || 1;
     obj._deleted = false;
 
     // Apply timestamps if the object doesn't have them
@@ -482,18 +485,19 @@ export class AppDatabase extends Dexie {
   }
 
   /**
-   * Enhanced updating hook with standardized timestamp utilities
+   * Enhanced updating hook with standardized timestamp utilities.
+   * SMART: Respects explicit _syncStatus from caller (e.g. 'synced' from pull).
    */
   private onUpdating(modifications: any, _primKey: any, obj: any, _trans: any) {
     if (this._ignoreHooks) return;
 
-    // Add standardized sync metadata
-    const syncMetadata = addSyncMetadata(obj, true);
-
-    // Apply standardized properties
-    modifications._syncStatus = syncMetadata._syncStatus;
-    modifications._lastModified = syncMetadata._lastModified;
-    modifications._version = syncMetadata._version;
+    // SMART SYNC STATUS: Only force 'pending' if the caller hasn't explicitly set 'synced'.
+    // When pull operations update a record, they include _syncStatus: 'synced' in modifications.
+    if (!modifications._syncStatus || modifications._syncStatus !== 'synced') {
+      modifications._syncStatus = 'pending';
+    }
+    modifications._lastModified = nowISO();
+    modifications._version = (obj._version || 0) + 1;
 
     // Update timestamp
     modifications.updated_at = nowISO();

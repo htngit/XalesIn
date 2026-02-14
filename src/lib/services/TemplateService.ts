@@ -17,16 +17,25 @@ export class TemplateService {
   private syncManager: SyncManager;
   private masterUserId: string | null = null;
 
+  private syncListener: any = null;
+
   constructor(syncManager?: SyncManager) {
     this.syncManager = syncManager || new SyncManager();
     this.setupSyncEventListeners();
+  }
+
+  cleanup() {
+    if (this.syncListener) {
+      this.syncManager.removeEventListener(this.syncListener);
+      this.syncListener = null;
+    }
   }
 
   /**
    * Setup event listeners for sync events
    */
   private setupSyncEventListeners() {
-    this.syncManager.addEventListener((event) => {
+    this.syncListener = (event: any) => {
       if (event.table === 'templates') {
         switch (event.type) {
           case 'sync_complete':
@@ -40,7 +49,8 @@ export class TemplateService {
             break;
         }
       }
-    });
+    };
+    this.syncManager.addEventListener(this.syncListener);
   }
 
   /**
@@ -197,26 +207,11 @@ export class TemplateService {
 
       // No local data available
       if (isOnline) {
-        try {
-          // Try to sync from server
-          await this.syncManager.triggerSync();
-
-          // Try local again after sync
-          localTemplates = await db.templates
-            .where('master_user_id')
-            .equals(masterUserId)
-            .and(template => !template._deleted)
-            .toArray();
-
-          if (localTemplates.length > 0) {
-            return this.transformLocalTemplates(localTemplates);
-          }
-        } catch (syncError) {
-          console.warn('Sync failed, trying direct server fetch:', syncError);
-        }
-
-        // Fallback to direct server fetch
+        // Fallback to direct server fetch (read-only)
+        // REMOVED: Side-effect triggerSync() here caused infinite loops.
         return await this.fetchTemplatesFromServer();
+
+
       } else {
         // Offline mode: return empty array or cached data
         console.log('Operating in offline mode - no templates available locally');
@@ -730,4 +725,4 @@ export class TemplateService {
 }
 
 // Create a singleton instance
-export const templateService = new TemplateService();
+// export const templateService = new TemplateService();

@@ -33,6 +33,7 @@ import { FadeIn } from '@/components/ui/animations';
 import { ContactModal } from '@/components/ui/ContactModal';
 import { UploadContactsDialog } from '@/components/ui/UploadContactsDialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { toast } from '@/hooks/use-toast';
 import { ContactsPagination } from '@/components/ui/ContactsPagination';
 import {
@@ -111,10 +112,12 @@ function ContactsPageContent({
   groups,
   paginationComponent,
   onCardClick,
-  onContactMove
+  onContactMove,
+  pipelineFilteredContacts
 }: {
   contacts: Contact[];
   filteredContacts: Contact[];
+  pipelineFilteredContacts: Contact[];
   paginatedContacts: Contact[];
   groups: ContactGroup[];
   searchQuery: string;
@@ -498,7 +501,7 @@ function ContactsPageContent({
 
             <TabsContent value="pipeline" className="h-[calc(100vh-220px)]">
               <PipelineTab
-                contacts={filteredContacts}
+                contacts={pipelineFilteredContacts}
                 onContactMove={onContactMove}
                 onCardClick={onCardClick}
               />
@@ -544,6 +547,7 @@ export function ContactsPage() {
   const intl = useIntl();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
+  const [pipelineFilteredContacts, setPipelineFilteredContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -798,12 +802,17 @@ export function ContactsPage() {
       });
     }
 
-    // Filter by status
+    // Capture Pipeline filtered state (Search only, no status filter)
+    const pipelineFiltered = [...filtered];
+
+    // Filter by status (for Table view only)
     if (statusFilter && statusFilter !== 'all') {
       filtered = filtered.filter(contact => (contact.lead_status || 'new') === statusFilter);
     }
 
     setFilteredContacts(filtered);
+    setPipelineFilteredContacts(pipelineFiltered);
+
     // Reset to first page when contacts or search query changes
     setCurrentPage(1);
   }, [contacts, searchQuery, statusFilter, groups]);
@@ -841,9 +850,11 @@ export function ContactsPage() {
 
   const stats = getGroupStats();
 
-  // if (isLoading) {
-  //   return <LoadingScreen message="Loading contacts..." />;
-  // }
+
+
+  if (isLoading && contacts.length === 0) {
+    return <LoadingScreen message={intl.formatMessage({ id: 'contacts.loading', defaultMessage: 'Loading contacts...' })} />;
+  }
 
   if (error) {
     return <ErrorScreen error={error} onRetry={loadData} />;
@@ -862,6 +873,7 @@ export function ContactsPage() {
       <ContactsPageContent
         contacts={contacts}
         filteredContacts={filteredContacts}
+        pipelineFilteredContacts={pipelineFilteredContacts}
         paginatedContacts={paginatedContacts}
         groups={groups}
         searchQuery={searchQuery}

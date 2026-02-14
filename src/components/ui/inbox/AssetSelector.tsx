@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AssetService, AssetFile } from '@/lib/services';
+import { AssetFile, serviceManager } from '@/lib/services';
 import { Search, Image as ImageIcon, Video, FileText, Music, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -20,8 +20,8 @@ export function AssetSelector({ isOpen, onClose, onSelect }: AssetSelectorProps)
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('all');
 
-    // Initialize service
-    const assetService = new AssetService();
+    // Use singleton service
+    const assetService = serviceManager.getAssetService();
 
     useEffect(() => {
         if (isOpen) {

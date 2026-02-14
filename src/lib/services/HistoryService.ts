@@ -19,9 +19,18 @@ export class HistoryService {
 
   private localListeners: ((log: ActivityLog) => void)[] = [];
 
+  private syncListener: any = null;
+
   constructor(syncManager?: SyncManager) {
     this.syncManager = syncManager || new SyncManager();
     this.setupSyncEventListeners();
+  }
+
+  cleanup() {
+    if (this.syncListener) {
+      this.syncManager.removeEventListener(this.syncListener);
+      this.syncListener = null;
+    }
   }
 
   /**
@@ -51,7 +60,7 @@ export class HistoryService {
    * Setup event listeners for sync events
    */
   private setupSyncEventListeners() {
-    this.syncManager.addEventListener((event) => {
+    this.syncListener = (event: any) => {
       if (event.table === 'activityLogs') {
         switch (event.type) {
           case 'sync_complete':
@@ -65,7 +74,8 @@ export class HistoryService {
             break;
         }
       }
-    });
+    };
+    this.syncManager.addEventListener(this.syncListener);
   }
 
   /**
@@ -208,26 +218,11 @@ export class HistoryService {
 
       // No local data available
       if (isOnline) {
-        try {
-          // Try to sync from server
-          await this.syncManager.triggerSync();
-
-          // Try local again after sync
-          localLogs = await db.activityLogs
-            .where('master_user_id')
-            .equals(masterUserId)
-            .and(log => !log._deleted)
-            .toArray();
-
-          if (localLogs.length > 0) {
-            return this.transformLocalLogs(localLogs);
-          }
-        } catch (syncError) {
-          console.warn('Sync failed, trying direct server fetch:', syncError);
-        }
-
-        // Fallback to direct server fetch
+        // Fallback to direct server fetch (read-only)
+        // REMOVED: Side-effect triggerSync() here caused infinite loops.
         return await this.fetchLogsFromServer();
+
+
       } else {
         // Offline mode: return empty array or cached data
         console.log('Operating in offline mode - no activity logs available locally');

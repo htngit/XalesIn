@@ -39,6 +39,13 @@ export class InitialSyncOrchestrator {
     // Get the singleton SyncManager instance
     const syncManager = this.serviceManager.getSyncManager();
 
+    // Guard: prevent re-entry using shared state on SyncManager (not instance-level flag,
+    // since Dashboard.tsx creates a new InitialSyncOrchestrator instance each time)
+    if (syncManager.isInitialSyncInProgress()) {
+      console.warn('InitialSync: Already in progress (via SyncManager flag), skipping');
+      return;
+    }
+
     // Signal that initial sync is starting - disable autoSync
     syncManager.setInitialSyncInProgress(true);
 
@@ -71,7 +78,6 @@ export class InitialSyncOrchestrator {
             console.log(`InitialSync: Pulling contacts (FastMode: ${isFreshInstall})...`);
 
             await syncManager.pullTableFromServer(tableName, {
-              backgroundProcessing: true,
               fastImport: isFreshInstall,
               force: true // Force execution even if stuck 'in progress'
             });

@@ -141,18 +141,28 @@ export function Dashboard({ userName, onLogout }: DashboardProps) {
   // Listen for sync complete events to refresh dashboard data
   useEffect(() => {
     const syncManager = serviceManager.getSyncManager();
+    let debounceTimer: NodeJS.Timeout | null = null;
 
     const listener = (event: any) => {
       // When contacts sync completes, refresh dashboard data
       if (event.type === 'sync_complete' && event.table === 'contacts') {
-        console.log('Dashboard: Contacts sync complete, refreshing stats...');
+        console.log('Dashboard: Contacts sync complete, scheduling refresh...');
         setIsSyncingData(false);
-        initializeUserData();
+
+        // Debounce refresh to prevent loops if multiple syncs happen
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          console.log('Dashboard: Executing debounced data refresh');
+          initializeUserData();
+        }, 2000); // 2 second debounce
       }
     };
 
     syncManager.addEventListener(listener);
-    return () => syncManager.removeEventListener(listener);
+    return () => {
+      syncManager.removeEventListener(listener);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, []);
 
   // ---------------------------------------------------------------------

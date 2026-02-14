@@ -54,10 +54,10 @@ export function PipelineColumn({ id, title, color, contacts, onCardClick }: Pipe
                     <div ref={setNodeRef} className="p-2 flex flex-col gap-2 min-h-[500px]">
                         <SortableContext
                             id={id}
-                            items={contacts.map(c => c.id)}
+                            items={contacts.slice(0, 20).map(c => c.id)}
                             strategy={verticalListSortingStrategy}
                         >
-                            {contacts.map((contact) => (
+                            {contacts.slice(0, 20).map((contact) => (
                                 <PipelineCard
                                     key={contact.id}
                                     contact={contact}

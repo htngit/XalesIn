@@ -23,6 +23,7 @@ export class MessageService {
     private localListeners: ((message: Message) => void)[] = [];
     // Mutex: Track message IDs currently being processed to prevent race conditions
     private processingMessageIds: Set<string> = new Set();
+    private syncListener: any = null;
 
     constructor(syncManager?: SyncManager) {
         this.syncManager = syncManager || new SyncManager();
@@ -56,7 +57,7 @@ export class MessageService {
      * Setup event listeners for sync events
      */
     private setupSyncEventListeners() {
-        this.syncManager.addEventListener((event) => {
+        this.syncListener = (event: any) => {
             if (event.table === 'messages') {
                 switch (event.type) {
                     case 'sync_complete':
@@ -67,7 +68,8 @@ export class MessageService {
                         break;
                 }
             }
-        });
+        };
+        this.syncManager.addEventListener(this.syncListener);
     }
 
     /**
@@ -693,5 +695,13 @@ export class MessageService {
             this.realtimeChannel = null;
         }
         this.localListeners = [];
+        if (this.syncListener) {
+            this.syncManager.removeEventListener(this.syncListener);
+            this.syncListener = null;
+        }
+    }
+
+    cleanup() {
+        this.destroy();
     }
 }

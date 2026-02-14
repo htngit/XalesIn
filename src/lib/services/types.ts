@@ -161,6 +161,8 @@ export interface AssetFile {
   url?: string;
 }
 
+export type AssetCategory = AssetFile['category'];
+
 export interface TemplateVariant {
   id: string;
   content: string;

@@ -13,6 +13,9 @@ import {
 
 export class QuotaService {
   private syncManager: SyncManager;
+  private activeSubscriptions: { unsubscribe: () => void }[] = [];
+  private isCleanedUp: boolean = false;
+  private syncListener: any = null;
 
 
   constructor(syncManager?: SyncManager) {
@@ -23,8 +26,24 @@ export class QuotaService {
   /**
    * Setup event listeners for sync events
    */
+  /**
+   * Cleanup resources
+   */
+  cleanup() {
+    this.isCleanedUp = true;
+    this.activeSubscriptions.forEach(sub => sub.unsubscribe());
+    this.activeSubscriptions = [];
+    if (this.syncListener) {
+      this.syncManager.removeEventListener(this.syncListener);
+      this.syncListener = null;
+    }
+  }
+
+  /**
+   * Setup event listeners for sync events
+   */
   private setupSyncEventListeners() {
-    this.syncManager.addEventListener((event) => {
+    this.syncListener = (event: any) => {
       if (event.table === 'quotas' || event.table === 'quotaReservations') {
         switch (event.type) {
           case 'sync_complete':
@@ -38,7 +57,8 @@ export class QuotaService {
             break;
         }
       }
-    });
+    };
+    this.syncManager.addEventListener(this.syncListener);
   }
 
   /**
@@ -61,6 +81,9 @@ export class QuotaService {
    * Required by Architecture: "RPC = single source of truth untuk quota"
    */
   async reserveQuota(userId: string, messageCount: number) {
+    if (this.isCleanedUp) {
+      throw new Error('QuotaService has been cleaned up and cannot be used.');
+    }
     // Check online
     const isOnline = this.syncManager.getIsOnline();
     if (!isOnline) {
@@ -155,6 +178,9 @@ export class QuotaService {
    * Enhanced with offline/online handling and better error recovery
    */
   async getQuota(userId: string): Promise<Quota> {
+    if (this.isCleanedUp) {
+      throw new Error('QuotaService has been cleaned up and cannot be used.');
+    }
     try {
       if (!userId) {
         throw new Error('User ID is required');
@@ -313,12 +339,17 @@ export class QuotaService {
           }
         });
 
-      return {
+      const sub = {
         unsubscribe: () => {
           console.log('Unsubscribing from quota updates for user:', userId);
           subscription.unsubscribe();
+          // Remove from active subscriptions
+          this.activeSubscriptions = this.activeSubscriptions.filter(s => s !== sub);
         }
       };
+
+      this.activeSubscriptions.push(sub);
+      return sub;
     } catch (error) {
       console.error('Error setting up quota subscription:', error);
       throw new Error(`Failed to setup quota subscription: ${handleDatabaseError(error)}`);
@@ -938,4 +969,4 @@ export class QuotaService {
 }
 
 // Create a singleton instance
-export const quotaService = new QuotaService();
+// export const quotaService = new QuotaService();

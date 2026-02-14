@@ -27,7 +27,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 import { toast as sonnerToast } from 'sonner';
 import { Loader2, Minus, Square } from 'lucide-react';
-import { UserProvider } from '@/lib/security/UserProvider';
+import { UserProvider, useUser } from '@/lib/security/UserProvider';
 import { userContextManager } from '@/lib/security/UserContextManager';
 import { db } from '@/lib/db';
 import { IntlProvider } from '@/lib/i18n/IntlProvider';
@@ -150,10 +150,14 @@ import { UpdateSplashScreen, AppUpdateInfo } from '@/components/pages/UpdateSpla
 
 // Main App Logic
 const MainApp = () => {
-  const [authData, setAuthData] = useState<AuthResponse | null>(null);
+  // Use UserContext for auth state source of truth
+  const { user, isLoading: isUserLoading } = useUser();
+
   const [pinData, setPinData] = useState<PINValidation | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
-  const [isRestoringSession, setIsRestoringSession] = useState(true);
+
+
+  // const [isUnlocking, setIsUnlocking] ... (already above)
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [showStopSyncConfirm, setShowStopSyncConfirm] = useState(false);
 
@@ -235,34 +239,7 @@ const MainApp = () => {
     setShowStopSyncConfirm(false);
   };
 
-  // Restore session on load
-  useEffect(() => {
-    const restoreSession = async () => {
-      try {
-        const authService = new AuthService();
-        const user = await authService.getCurrentUser();
 
-        if (user) {
-          // We have a user, but we don't have quota yet (fetched after PIN)
-          // However, we need to set authData to consider them "authenticated"
-          setAuthData({
-            user,
-            token: '', // Token handled by provider
-            // quota is optional now
-          });
-
-          // Note: We do NOT auto-validate PIN here. 
-          // User must enter PIN every time they reload/re-open app (Architecture Requirement)
-        }
-      } catch (error) {
-        console.error('Failed to restore session:', error);
-      } finally {
-        setIsRestoringSession(false);
-      }
-    };
-
-    restoreSession();
-  }, []);
 
   // WhatsApp Message Sync Listener (Inbox)
   useEffect(() => {
@@ -414,10 +391,8 @@ const MainApp = () => {
       console.warn('[App] Failed to clear sync timestamps on login:', error);
     });
 
-    setAuthData(data);
-    // Do NOT set PIN data yet. User must enter PIN.
-
-    // Set the current user as the last user
+    // UserProvider will update 'user' state via its own listener/logic.
+    // We just need to ensure the switch happens.
     userContextManager.setLastUserId(data.user.id);
   };
 
@@ -425,67 +400,28 @@ const MainApp = () => {
     // 1. Fetch account metadata (Quota, etc.) now that we have access
     try {
       const authService = new AuthService();
-      const { quota } = await authService.getAccountMetadata(accountId);
+      await authService.getAccountMetadata(accountId);
 
       // Check for App Updates
       const { updateAvailable, updateInfo } = await authService.checkAppVersion();
       if (updateAvailable && updateInfo) {
         setUpdateInfo(updateInfo);
-        // If mandatory, we might want to prevent further interaction, 
-        // but showing the splash screen over everything works too.
       }
 
-      // 2. Update authData with the fetched quota
-      setAuthData(prev => prev ? { ...prev, quota } : null);
+      // Mark services as needing masterUserId for this session
+      syncManager.setMasterUserId(accountId);
 
-      // 3. Trigger Unlock Transition
       setIsUnlocking(true);
 
-      // Delay actual unlock to show Welcome Screen
+      // Simulate unlock delay for smooth UX
       setTimeout(() => {
-        setPinData(data);
         setIsUnlocking(false);
-      }, 1500); // 1.5 seconds for better UX
-
-      // ... (existing sync logic)
-      let masterUserId = authData?.user?.master_user_id;
-      // ... (rest of handlePINValidated)
-      // I will truncate here to avoid replacing too much, relying on careful placement
-      if (!masterUserId) {
-        // Fallback if authData isn't fully ready, though it should be
-        const user = await authService.getCurrentUser();
-        if (user) {
-          masterUserId = user.master_user_id;
-        }
-      }
-
-      if (masterUserId) {
-        // Fix for Initial Sync Race Condition:
-        // Ensure UserContextManager has the user before we attempt to sync.
-        // The background auth state change might be slower than the UI flow.
-        const currentUser = await userContextManager.getCurrentUser();
-        if (!currentUser && authData?.user) {
-          console.log('[App] Race condition detected: Injecting user into UserContextManager before sync');
-          await userContextManager.setCurrentUser(authData.user, authData.token, { skipDbVerification: true });
-        }
-
-        syncManager.setMasterUserId(masterUserId);
-
-        // TRIGGER WHATSAPP ENGINE START (Defer until PIN validated)
-        console.log('[App] PIN Validated, starting WhatsApp engine...');
-        window.electron?.whatsapp?.connect().catch(err => {
-          console.error('[App] Failed to start WhatsApp engine:', err);
-        });
-
-        // NOTE: Service Initialization and Initial Sync are now handled by Dashboard.tsx
-        // This ensures the UI is responsive and shows progress immediately.
-        console.log('[App] Proceeding to Dashboard...');
         setPinData(data);
-      }
+      }, 800);
+
     } catch (error) {
       console.error("Failed to load account data after PIN:", error);
-      // Handle error (maybe show toast)
-      // Still proceed to unlock UI, sync will happen later if needed
+      // Still proceed to unlock UI
       setPinData(data);
     }
   };
@@ -504,20 +440,26 @@ const MainApp = () => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      setAuthData(null);
+      // UserProvider will handle 'user' state update
       setPinData(null);
       setUpdateInfo(null); // Clear update info
       syncManager.setMasterUserId(null);
     }
   };
 
-  if (isRestoringSession) {
+  if (isUserLoading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
-  const isAuthenticated = !!authData?.user;
+  const isAuthenticated = !!user;
   const isPINValidated = !!pinData?.is_valid;
   const showUpdateSplash = !!updateInfo;
+
+  // Construct authData for child components that expect it
+  const derivedAuthData: AuthResponse | null = user ? {
+    user: user,
+    token: '' // Token managed by UserProvider/Supabase internally
+  } : null;
 
   return (
     <Router>
@@ -544,7 +486,7 @@ const MainApp = () => {
               </div>
               <div className="text-center space-y-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-foreground/90">
-                  Selamat Datang, {authData?.user.name}
+                  Selamat Datang, {user?.name}
                 </h2>
                 <p className="text-muted-foreground text-sm">Menyiapkan dashboard anda...</p>
               </div>
@@ -556,14 +498,14 @@ const MainApp = () => {
           <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
             <PINModal
               onPINValidated={handlePINValidated}
-              userName={authData?.user.name || 'User'}
-              userId={authData?.user.id}
+              userName={user?.name || 'User'}
+              userId={user?.id}
             />
           </div>
         ) : (
           // 3. Authenticated & Unlocked -> Protected Routes
           <ProtectedRoutes
-            authData={authData}
+            authData={derivedAuthData}
             onLogout={handleLogout}
           />
         )}

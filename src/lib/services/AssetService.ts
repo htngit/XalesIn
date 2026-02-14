@@ -7,10 +7,20 @@ import {
   toISOString,
   localToSupabase,
   addSyncMetadata,
-  addTimestamps,
   standardizeForService
 } from '../utils/timestamp';
 import { activityService } from './ActivityService';
+import {
+  getAssetDisplayInfo as _getAssetDisplayInfo,
+  getAssetCategories as _getAssetCategories,
+  getCategoryFromFileType as _getCategoryFromFileType,
+  canSendViaWhatsApp as _canSendViaWhatsApp,
+  extractFileNameFromUrl as _extractFileNameFromUrl,
+  formatFileSize as _formatFileSize,
+  getAssetIcon as _getAssetIcon,
+} from './AssetUtils';
+import { cacheAssetFile, getCachedAssetFile, evictOldestAssets, getCurrentStorageUsage, clearCache } from './AssetCacheService';
+import { syncAssetsFromSupabase, prefetchAssets, backgroundSyncPendingAssets, uploadFileToSupabase } from './AssetSyncService';
 
 export class AssetService {
   private syncManager: SyncManager;
@@ -293,71 +303,7 @@ export class AssetService {
   /**
    * Upload a file and create asset record to server - online only (private method)
    */
-  private async uploadAssetOnline(file: File, category: AssetFile['category']): Promise<AssetFile> {
-    try {
-      const user = await this.getCurrentUser();
-      const masterUserId = await this.getMasterUserId();
 
-      // First, upload the file to Supabase Storage
-      const fileName = `${masterUserId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('assets')
-        .upload(fileName, file);
-
-      if (uploadError) {
-        throw new Error(`Failed to upload file: ${uploadError.message}`);
-      }
-
-      // Get the public URL
-      const { data: urlData } = supabase.storage
-        .from('assets')
-        .getPublicUrl(fileName);
-
-      // Use standardized timestamp utilities
-      const timestamps = addTimestamps({}, false);
-      const syncMetadata = addSyncMetadata({}, false);
-      toISOString(new Date());
-
-      // Prepare local asset data
-      const newLocalAsset: Omit<LocalAsset, 'id'> = {
-        name: file.name,
-        file_name: file.name, // Add required file_name property
-        file_size: file.size,
-        file_type: file.type,
-        file_url: urlData.publicUrl,
-        uploaded_by: user.id,
-        category,
-        master_user_id: masterUserId,
-        is_public: true,
-        mime_type: file.type,
-        created_at: timestamps.created_at,
-        updated_at: timestamps.updated_at,
-        _syncStatus: syncMetadata._syncStatus,
-        _lastModified: syncMetadata._lastModified,
-        _version: syncMetadata._version,
-        _deleted: false
-      };
-
-      // Add to local database first
-      const assetId = crypto.randomUUID();
-      const localAsset = {
-        id: assetId,
-        ...newLocalAsset
-      };
-
-      await db.assets.add(localAsset);
-
-      // Transform for sync queue (convert Date objects to ISO strings)
-      const syncData = localToSupabase(localAsset);
-      await this.syncManager.addToSyncQueue('assets', 'create', assetId, syncData);
-
-      // Return transformed asset
-      return this.transformLocalAssets([localAsset])[0];
-    } catch (error) {
-      console.error('Error uploading asset:', error);
-      throw new Error(handleDatabaseError(error));
-    }
-  }
 
   /**
    * Background sync assets without blocking the main operation
@@ -376,54 +322,15 @@ export class AssetService {
    * Background sync specifically for pending asset uploads
    */
   async backgroundSyncPendingAssets(): Promise<void> {
-    try {
-      // Get all pending assets for the current user
-      const masterUserId = await this.getMasterUserId();
-      const pendingAssets = await db.assets
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(asset => asset._syncStatus === 'pending')
-        .toArray();
+    const masterUserId = await this.getMasterUserId();
+    const user = await this.getCurrentUser();
 
-      if (pendingAssets.length === 0) {
-        return; // Nothing to sync
-      }
-
-      // Check if we're online before attempting sync
-      const isOnline = this.syncManager.getIsOnline();
-      if (!isOnline) {
-        console.log('Offline, skipping pending asset sync');
-        return;
-      }
-
-      // Process each pending asset
-      for (const asset of pendingAssets) {
-        try {
-          // Find the cached blob for this asset if available
-          const cachedBlob = await this.getCachedAssetFile(asset.id);
-
-          if (cachedBlob) {
-            // Attempt to upload the asset
-            await this.uploadAssetOnline(cachedBlob as any, asset.category);
-
-            // Update the sync status after successful upload
-            await db.assets.update(asset.id, {
-              _syncStatus: 'synced',
-              _lastModified: toISOString(new Date())
-            });
-          }
-        } catch (error) {
-          console.error(`Failed to sync pending asset ${asset.id}:`, error);
-          // Keep the asset as pending for retry
-          await db.assets.update(asset.id, {
-            _syncStatus: 'pending',
-            _lastModified: toISOString(new Date())
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error during background sync of pending assets:', error);
-    }
+    return backgroundSyncPendingAssets({
+      db,
+      masterUserId,
+      user,
+      syncManager: this.syncManager
+    });
   }
 
   /**
@@ -488,38 +395,20 @@ export class AssetService {
         console.log('AssetService: Device is online, attempting direct upload to Supabase Storage...');
         // If online, upload file to storage and update the asset
         try {
-          // Upload the file to Supabase Storage
-          const fileName = `${masterUserId}/${Date.now()}_${file.name}`;
-          console.log('AssetService: Uploading file to Supabase Storage with filename:', fileName);
-
-          const { error: uploadError } = await supabase.storage
-            .from('assets')
-            .upload(fileName, file);
-
-          if (uploadError) {
-            console.error('AssetService: Upload to Supabase Storage failed:', uploadError.message);
-            throw new Error(`Failed to upload file: ${uploadError.message}`);
-          }
-
-          console.log('AssetService: File uploaded successfully to Supabase Storage');
-
-          // Get the public URL
-          const { data: urlData } = supabase.storage
-            .from('assets')
-            .getPublicUrl(fileName);
-
-          console.log('AssetService: Generated public URL:', urlData.publicUrl);
+          // Use shared helper for upload
+          const publicUrl = await uploadFileToSupabase(masterUserId, file);
+          console.log('AssetService: File uploaded successfully via shared helper. URL:', publicUrl);
 
           // Update the local asset with the file URL
           const updatedAsset = {
             ...localAsset,
-            file_url: urlData.publicUrl,
+            file_url: publicUrl,
             _syncStatus: 'pending' as const,
             _lastModified: toISOString(new Date())
           };
 
           await db.assets.update(assetId, {
-            file_url: urlData.publicUrl,
+            file_url: publicUrl,
             _syncStatus: 'pending',
             _lastModified: toISOString(new Date())
           });
@@ -662,16 +551,10 @@ export class AssetService {
 
   /**
    * Extract file name from Supabase storage URL
+   * @delegate AssetUtils.extractFileNameFromUrl
    */
   private extractFileNameFromUrl(url: string): string | null {
-    try {
-      // URL format: https://[project].supabase.co/storage/v1/object/public/assets/[masterUserId]/[timestamp]_[filename]
-      const parts = url.split('/');
-      const fileNamePart = parts[parts.length - 1];
-      return fileNamePart ? `${parts[parts.length - 2]}/${fileNamePart}` : null;
-    } catch {
-      return null;
-    }
+    return _extractFileNameFromUrl(url);
   }
 
   /**
@@ -698,27 +581,7 @@ export class AssetService {
    * Validate if asset can be sent via WhatsApp
    */
   canSendViaWhatsApp(asset: AssetFile): boolean {
-    const whatsappLimits = {
-      image: 16 * 1024 * 1024, // 16MB
-      video: 16 * 1024 * 1024, // 16MB
-      document: 100 * 1024 * 1024 // 100MB
-    };
-
-    const type = (asset.type || '').toLowerCase();
-    const category = asset.category;
-    const size = asset.size || 0;
-
-    if (category === 'image' && type.includes('image')) {
-      return size <= whatsappLimits.image;
-    }
-    if (category === 'video' && type.includes('video')) {
-      return size <= whatsappLimits.video;
-    }
-    if (category === 'document' && type.includes('pdf')) {
-      return size <= whatsappLimits.document;
-    }
-
-    return false;
+    return _canSendViaWhatsApp(asset);
   }
 
   /**
@@ -762,78 +625,23 @@ export class AssetService {
    * Format asset info for display
    */
   getAssetDisplayInfo(asset: AssetFile): { icon: string; label: string; description: string } {
-    const category = asset.category;
-
-    switch (category) {
-      case 'image':
-        return {
-          icon: '🖼️',
-          label: 'Image',
-          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
-        };
-      case 'video':
-        return {
-          icon: '🎬',
-          label: 'Video',
-          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
-        };
-      case 'document':
-        return {
-          icon: '📄',
-          label: 'Document',
-          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
-        };
-      case 'audio':
-        return {
-          icon: '🎵',
-          label: 'Audio',
-          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
-        };
-      default:
-        return {
-          icon: '📎',
-          label: 'File',
-          description: `${asset.name} (${this.formatFileSize(asset.size || 0)})`
-        };
-    }
+    return _getAssetDisplayInfo(asset);
   }
 
-  /**
-   * Format file size
-   */
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
+
 
   /**
    * Get asset categories for filtering
    */
   getAssetCategories(): { value: AssetFile['category']; label: string; icon: string }[] {
-    return [
-      { value: 'image', label: 'Images', icon: '🖼️' },
-      { value: 'video', label: 'Videos', icon: '🎬' },
-      { value: 'audio', label: 'Audio', icon: '🎵' },
-      { value: 'document', label: 'Documents', icon: '📄' },
-      { value: 'other', label: 'Other', icon: '📎' }
-    ];
+    return _getAssetCategories();
   }
 
   /**
    * Determine asset category from file type
    */
   getCategoryFromFileType(file: File): AssetFile['category'] {
-    const type = file.type.toLowerCase();
-
-    if (type.startsWith('image/')) return 'image';
-    if (type.startsWith('video/')) return 'video';
-    if (type.startsWith('audio/')) return 'audio';
-    if (type.includes('pdf') || type.includes('document') || type.includes('text/')) return 'document';
-
-    return 'other';
+    return _getCategoryFromFileType(file);
   }
 
   /**
@@ -879,61 +687,10 @@ export class AssetService {
    * @param blob - The blob data to cache
    */
   async cacheAssetFile(assetId: string, blob: Blob): Promise<void> {
-    console.log('AssetService: cacheAssetFile() - Attempting to cache asset with ID:', assetId, 'size:', blob.size, 'bytes');
-    try {
-      // Get the asset to validate existence and get metadata
-      const masterUserId = await this.getMasterUserId();
-      console.log('AssetService: Validating asset exists for user:', masterUserId);
-      const asset = await db.assets
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(item => item.id === assetId)
-        .first();
-
-      if (!asset) {
-        console.error(`AssetService: Asset with ID ${assetId} not found, cannot cache`);
-        throw new Error(`Asset with ID ${assetId} not found`);
-      }
-
-      console.log('AssetService: Asset validation passed, asset found:', asset.name);
-
-      // Check if we're approaching storage limits (16MB for WhatsApp compatibility)
-      const maxAssetSize = 16 * 1024 * 1024; // 16MB
-      if (blob.size > maxAssetSize) {
-        console.error(`AssetService: Asset exceeds maximum size of ${maxAssetSize} bytes`);
-        throw new Error(`Asset exceeds maximum size of ${maxAssetSize} bytes`);
-      }
-
-      // Check total storage quota
-      const currentUsage = await this.getCurrentStorageUsage();
-      const maxCacheSize = 500 * 1024 * 1024; // 500MB as specified in the config
-      console.log(`AssetService: Current cache usage: ${currentUsage} bytes, requested: ${blob.size} bytes, max: ${maxCacheSize} bytes`);
-
-      if (currentUsage + blob.size > maxCacheSize) {
-        console.log('AssetService: Cache size limit approaching, attempting to evict oldest assets...');
-        // Evict oldest assets until there's enough space
-        await this.evictOldestAssets(blob.size);
-        console.log('AssetService: Asset eviction completed');
-      }
-
-      // Store the blob in the asset_blobs table
-      const cacheEntry = {
-        asset_id: assetId,
-        blob: blob,
-        mime_type: blob.type,
-        size: blob.size,
-        cached_at: toISOString(new Date()),
-        last_accessed: toISOString(new Date()),
-        _version: 1
-      };
-
-      // Use put to update if exists or add if new
-      await db.asset_blobs.put(cacheEntry);
-      console.log(`AssetService: Asset ${assetId} cached successfully, size: ${blob.size} bytes`);
-    } catch (error) {
-      console.error(`AssetService: Error caching asset file ${assetId}:`, error);
-      throw new Error(`Failed to cache asset: ${handleDatabaseError(error)}`);
-    }
+    return cacheAssetFile({
+      db,
+      masterUserId: await this.getMasterUserId()
+    }, assetId, blob);
   }
 
 
@@ -943,25 +700,10 @@ export class AssetService {
    * @returns The cached blob or null if not found
    */
   async getCachedAssetFile(assetId: string): Promise<Blob | null> {
-    console.log('AssetService: getCachedAssetFile() - Attempting to retrieve cached asset with ID:', assetId);
-    try {
-      const cacheEntry = await db.asset_blobs.get(assetId);
-      if (!cacheEntry) {
-        console.log(`AssetService: Asset ${assetId} not found in cache`);
-        return null;
-      }
-
-      // Update last accessed timestamp
-      await db.asset_blobs.update(assetId, {
-        last_accessed: toISOString(new Date())
-      });
-
-      console.log(`AssetService: Asset ${assetId} retrieved from cache, size: ${cacheEntry.size} bytes, type: ${cacheEntry.mime_type}`);
-      return cacheEntry.blob;
-    } catch (error) {
-      console.error(`AssetService: Error retrieving cached asset file ${assetId}:`, error);
-      return null;
-    }
+    return getCachedAssetFile({
+      db,
+      masterUserId: await this.getMasterUserId()
+    }, assetId);
   }
 
   /**
@@ -1027,37 +769,21 @@ export class AssetService {
    * Clear asset cache
    * @param olderThan - Optional date to clear only assets cached before this date
    */
-  async clearAssetCache(olderThan?: Date): Promise<void> {
-    try {
-      if (olderThan) {
-        // Clear assets cached before the specified date
-        await db.asset_blobs
-          .where('cached_at')
-          .below(toISOString(olderThan))
-          .delete();
-      } else {
-        // Clear all cached assets
-        await db.asset_blobs.clear();
-      }
-
-      console.log('Asset cache cleared successfully');
-    } catch (error) {
-      console.error('Error clearing asset cache:', error);
-      throw new Error(`Failed to clear asset cache: ${handleDatabaseError(error)}`);
-    }
+  async clearCache(): Promise<void> {
+    return clearCache({
+      db,
+      masterUserId: await this.getMasterUserId()
+    });
   }
 
   /**
    * Get current storage usage for asset cache
    */
   async getCurrentStorageUsage(): Promise<number> {
-    try {
-      const allCachedAssets = await db.asset_blobs.toArray();
-      return allCachedAssets.reduce((total, asset) => total + asset.size, 0);
-    } catch (error) {
-      console.error('Error getting current storage usage:', error);
-      return 0;
-    }
+    return getCurrentStorageUsage({
+      db,
+      masterUserId: await this.getMasterUserId()
+    });
   }
 
   /**
@@ -1065,25 +791,10 @@ export class AssetService {
    * @param requiredSize - The amount of space needed in bytes
    */
   async evictOldestAssets(requiredSize: number): Promise<void> {
-    try {
-      // Get currently cached assets
-      const cachedAssets = await db.asset_blobs.orderBy('last_accessed').toArray();
-
-      let freedSize = 0;
-      let index = 0;
-
-      while (freedSize < requiredSize && index < cachedAssets.length) {
-        const asset = cachedAssets[index];
-        await db.asset_blobs.delete(asset.asset_id);
-        freedSize += asset.size;
-        index++;
-      }
-
-      console.log(`Evicted ${index} cached assets to free up ${freedSize} bytes`);
-    } catch (error) {
-      console.error('Error evicting oldest assets:', error);
-      throw new Error(`Failed to evict assets: ${handleDatabaseError(error)}`);
-    }
+    return evictOldestAssets({
+      db,
+      masterUserId: await this.getMasterUserId()
+    }, requiredSize);
   }
 
   /**
@@ -1092,71 +803,15 @@ export class AssetService {
    * Returns stats for UI feedback
    */
   async syncAssetsFromSupabase(onProgress?: (progress: number) => void): Promise<{ syncedCount: number; skippedCount: number; errorCount: number }> {
-    console.log('AssetService: syncAssetsFromSupabase() - Starting full asset content sync');
-    try {
-      const masterUserId = await this.getMasterUserId();
+    const user = await this.getCurrentUser();
+    const masterUserId = await this.getMasterUserId();
 
-      // Get all asset IDs from local DB (metadata is already synced)
-      const allAssets = await db.assets
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(asset => !asset._deleted)
-        .toArray();
-
-      if (allAssets.length === 0) {
-        console.log('AssetService: No assets found in local DB. Checking Supabase directly...');
-
-        // Fallback: Check Supabase directly in case sync failed or hasn't run yet
-        const { data: serverAssets, error } = await supabase
-          .from('assets')
-          .select('*')
-          .eq('master_user_id', masterUserId);
-
-        if (error) {
-          console.error('AssetService: Error checking Supabase for assets:', error);
-          if (onProgress) onProgress(100);
-          return { syncedCount: 0, skippedCount: 0, errorCount: 0 };
-        }
-
-        if (!serverAssets || serverAssets.length === 0) {
-          console.log('AssetService: No assets found on Supabase either.');
-          if (onProgress) onProgress(100);
-          return { syncedCount: 0, skippedCount: 0, errorCount: 0 };
-        }
-
-        console.log(`AssetService: Found ${serverAssets.length} assets on Supabase that were missing locally. Syncing metadata...`);
-
-        // Insert missing metadata into local DB
-        await db.assets.bulkPut(serverAssets.map(asset => ({
-          ...asset,
-          _syncStatus: 'synced',
-          _lastModified: new Date().toISOString(),
-          _version: 1,
-          _deleted: false
-        })));
-
-        // Update allAssets array to proceed with download
-        allAssets.push(...serverAssets as any[]);
-      }
-
-      const assetIds = allAssets.map(a => a.id);
-      console.log(`AssetService: Found ${assetIds.length} assets to check/download`);
-
-      // Use prefetchAssets with progress tracking
-      const stats = await this.prefetchAssets(assetIds, onProgress);
-
-      console.log('AssetService: Full asset content sync completed', stats);
-
-      return {
-        syncedCount: stats.success,
-        skippedCount: stats.skipped,
-        errorCount: stats.failed
-      };
-    } catch (error) {
-      console.error('AssetService: Error during full asset content sync:', error);
-      // Return empty stats on error to avoid breaking UI
-      return { syncedCount: 0, skippedCount: 0, errorCount: 0 };
-    }
+    return syncAssetsFromSupabase({
+      db,
+      user,
+      masterUserId,
+      syncManager: this.syncManager
+    }, onProgress);
   }
 
   /**
@@ -1166,94 +821,19 @@ export class AssetService {
    * @returns Stats about the prefetch operation
    */
   async prefetchAssets(assetIds: string[], onProgress?: (progress: number) => void): Promise<{ success: number; skipped: number; failed: number }> {
-    console.log('AssetService: prefetchAssets() - Starting prefetch for', assetIds.length, 'assets');
+    const user = await this.getCurrentUser();
+    const masterUserId = await this.getMasterUserId();
 
-    const CONCURRENCY = 3;
-    const total = assetIds.length;
-    let completed = 0;
-
-    // Stats tracking
-    let success = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    const processAsset = async (assetId: string) => {
-      try {
-        // Check if already cached
-        const isCached = await this.getCachedAssetFile(assetId);
-        if (isCached) {
-          console.log(`AssetService: Asset ${assetId} already cached, skipping download`);
-          skipped++;
-          return;
-        }
-
-        // Fetch and cache
-        const masterUserId = await this.getMasterUserId();
-        const asset = await db.assets
-          .where('master_user_id')
-          .equals(masterUserId)
-          .and(item => item.id === assetId)
-          .first();
-
-        if (!asset) {
-          console.warn(`AssetService: Asset with ID ${assetId} not found for prefetch`);
-          failed++; // Count as failed if metadata missing
-          return;
-        }
-
-        if (!asset.file_url) {
-          console.log(`AssetService: Asset ${assetId} has no URL, skipping`);
-          skipped++;
-          return;
-        }
-
-        console.log(`AssetService: Downloading asset ${assetId} from URL:`, asset.file_url);
-        const response = await fetch(asset.file_url);
-        if (!response.ok) {
-          throw new Error(`Failed to prefetch asset from ${asset.file_url}: ${response.status}`);
-        }
-
-        const blob = await response.blob();
-        console.log(`AssetService: Downloaded asset ${assetId}, size:`, blob.size, 'bytes');
-        await this.cacheAssetFile(assetId, blob);
-        console.log(`AssetService: Asset ${assetId} successfully cached`);
-        success++;
-
-      } catch (error) {
-        console.error(`AssetService: Error pre-fetching asset ${assetId}:`, error);
-        failed++;
-      } finally {
-        completed++;
-        if (onProgress) {
-          onProgress(Math.round((completed / total) * 100));
-        }
-      }
-    };
-
-    // Execute with concurrency limit
-    const executing = new Set<Promise<void>>();
-    const results: Promise<void>[] = [];
-
-    for (const id of assetIds) {
-      const p = processAsset(id).then(() => {
-        executing.delete(p);
-      });
-      results.push(p);
-      executing.add(p);
-
-      if (executing.size >= CONCURRENCY) {
-        await Promise.race(executing);
-      }
-    }
-
-    await Promise.all(results);
-
-    console.log(`AssetService: Prefetch completed. Processed ${completed}/${total} assets. Success: ${success}, Skipped: ${skipped}, Failed: ${failed}`);
-    return { success, skipped, failed };
+    return prefetchAssets({
+      db,
+      user,
+      masterUserId,
+      syncManager: this.syncManager
+    }, assetIds, onProgress);
   }
 }
 
 // Export both the class and create a singleton instance
-export const assetService = new AssetService();
+// export const assetService = new AssetService();
 export { AssetService as AssetServiceClass };
 export type { AssetFile };

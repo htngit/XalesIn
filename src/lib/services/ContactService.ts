@@ -19,23 +19,52 @@ import {
   isValidPhoneNumber,
   sanitizeArray
 } from '../utils/validation';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+
+import {
+  searchLocalContacts,
+  getLocalContactsByGroupId,
+  getLocalContactsByGroupIds,
+  getLocalContactsByLeadStatus,
+  getContactCount as _getContactCount,
+} from './ContactQueryService';
+import {
+  getCRMStats as _getCRMStats,
+  getSalesFunnel as _getSalesFunnel,
+  getRecentActivityContacts as _getRecentActivityContacts,
+} from './ContactCRMService';
+import { createContacts, syncWhatsAppContactsDirectlyToServer } from './ContactImportService';
+import { ContactSyncService } from './ContactSyncService';
 
 export class ContactService {
-  private realtimeChannel: RealtimeChannel | null = null;
+  private contactSyncService: ContactSyncService;
   private syncManager: SyncManager;
+  private syncListener: any = null;
   private masterUserId: string | null = null;
 
   constructor(syncManager?: SyncManager) {
     this.syncManager = syncManager || new SyncManager();
+    this.contactSyncService = new ContactSyncService(this.syncManager);
     this.setupSyncEventListeners();
   }
 
   /**
    * Setup event listeners for sync events
    */
+  /**
+   * Cleanup resources
+   */
+  cleanup() {
+    if (this.syncListener) {
+      this.syncManager.removeEventListener(this.syncListener);
+      this.syncListener = null;
+    }
+  }
+
+  /**
+   * Setup event listeners for sync events
+   */
   private setupSyncEventListeners() {
-    this.syncManager.addEventListener((event) => {
+    this.syncListener = (event: any) => {
       if (event.table === 'contacts') {
         switch (event.type) {
           case 'sync_complete':
@@ -47,7 +76,8 @@ export class ContactService {
             break;
         }
       }
-    });
+    };
+    this.syncManager.addEventListener(this.syncListener);
   }
 
   /**
@@ -274,6 +304,9 @@ export class ContactService {
         .and(contact => !contact._deleted)
         .toArray();
 
+      // Sort by updated_at descending to ensure recently moved contacts are visible (within 20-item limit)
+      localContacts.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
       console.log('Local contacts found:', localContacts.length);
 
       // If we have local data, return it immediately (offline-first approach)
@@ -284,6 +317,10 @@ export class ContactService {
         // If online, trigger background sync to update local data
         // If online, trigger background sync to update local data
         // Only trigger if we haven't synced in the last minute (to prevent spamming on navigation)
+        // If online, trigger background sync to update local data
+        // REMOVED: Side-effect sync here caused infinite loops with Dashboard refresh.
+        // Sync is now handled exclusively by SyncManager auto-sync or manual user action.
+        /*
         if (isOnline) {
           const lastSync = this.syncManager.getGlobalLastSyncTime();
           const timeSinceSync = Date.now() - lastSync.getTime();
@@ -297,6 +334,7 @@ export class ContactService {
             });
           }
         }
+        */
 
         return enrichedContacts;
       }
@@ -413,7 +451,7 @@ export class ContactService {
     console.log(`Fetched ${contacts.length} contacts from server via RPC`);
 
     // Transform server data to match interface with standardized timestamps
-    return contacts.map(contact => {
+    const transformed = contacts.map(contact => {
       const standardized = standardizeForService(contact, 'contact');
       return {
         ...standardized,
@@ -421,21 +459,19 @@ export class ContactService {
         groups: null
       };
     }) as ContactWithGroup[];
+
+    // Sort by updated_at descending
+    return transformed.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
   /**
    * Get contacts filtered by group ID
+   * @delegate ContactQueryService.getLocalContactsByGroupId
    */
   async getContactsByGroupId(groupId: string): Promise<ContactWithGroup[]> {
     try {
       const masterUserId = await this.getMasterUserId();
-
-      // Try local first
-      let localContacts = await db.contacts
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(contact => !contact._deleted && contact.group_id === groupId)
-        .toArray();
+      const localContacts = await getLocalContactsByGroupId(masterUserId, groupId);
 
       if (localContacts.length > 0) {
         return await this.enrichContactsWithGroups(localContacts);
@@ -452,17 +488,12 @@ export class ContactService {
 
   /**
    * Get contacts filtered by multiple group IDs
+   * @delegate ContactQueryService.getLocalContactsByGroupIds
    */
   async getContactsByGroupIds(groupIds: string[]): Promise<ContactWithGroup[]> {
     try {
       const masterUserId = await this.getMasterUserId();
-
-      // Try local first
-      let localContacts = await db.contacts
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(contact => !contact._deleted && !!contact.group_id && groupIds.includes(contact.group_id))
-        .toArray();
+      const localContacts = await getLocalContactsByGroupIds(masterUserId, groupIds);
 
       if (localContacts.length > 0) {
         return await this.enrichContactsWithGroups(localContacts);
@@ -487,15 +518,12 @@ export class ContactService {
 
   /**
    * Get the count of contacts for the current user
+   * @delegate ContactQueryService.getContactCount
    */
   async getContactCount(): Promise<number> {
     try {
       const masterUserId = await this.getMasterUserId();
-      return await db.contacts
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(contact => !contact._deleted)
-        .count();
+      return await _getContactCount(masterUserId);
     } catch (error) {
       console.warn('Error counting contacts:', error);
       return 0;
@@ -504,24 +532,12 @@ export class ContactService {
 
   /**
    * Search contacts by name, phone, or tags
+   * @delegate ContactQueryService.searchLocalContacts
    */
   async searchContacts(query: string): Promise<ContactWithGroup[]> {
     try {
       const masterUserId = await this.getMasterUserId();
-
-      // Try local first with search
-      const localContacts = await db.contacts
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(contact => !contact._deleted)
-        .toArray();
-
-      // Filter locally
-      const filteredLocal = localContacts.filter(contact =>
-        contact.name.toLowerCase().includes(query.toLowerCase()) ||
-        contact.phone.includes(query) ||
-        contact.tags?.some((tag: string) => tag.toLowerCase().includes(query.toLowerCase()))
-      );
+      const filteredLocal = await searchLocalContacts(masterUserId, query);
 
       if (filteredLocal.length > 0) {
         return await this.enrichContactsWithGroups(filteredLocal);
@@ -529,10 +545,11 @@ export class ContactService {
 
       // Fallback to server search
       const serverContacts = await this.fetchContactsFromServer();
+      const lowerQuery = query.toLowerCase();
       return serverContacts.filter(contact =>
-        contact.name.toLowerCase().includes(query.toLowerCase()) ||
+        contact.name.toLowerCase().includes(lowerQuery) ||
         contact.phone.includes(query) ||
-        contact.tags?.some((tag: string) => tag.toLowerCase().includes(query.toLowerCase()))
+        contact.tags?.some((tag: string) => tag.toLowerCase().includes(lowerQuery))
       );
     } catch (error) {
       console.error('Error searching contacts:', error);
@@ -719,133 +736,14 @@ export class ContactService {
    * Create multiple contacts efficiently
    */
   async createContacts(contactsData: Omit<Contact, 'id' | 'created_at' | 'updated_at' | 'master_user_id' | 'created_by'>[]): Promise<{ success: boolean; created: number; errors: string[] }> {
-    try {
-      // Ensure DB is open
-      if (!db.isOpen()) {
-        await db.open();
-      }
-
-      const hasPermission = await userContextManager.canPerformAction('create_contacts', 'contacts');
-      if (!hasPermission) {
-        throw new Error('Access denied: insufficient permissions to create contacts');
-      }
-
-      const user = await this.getCurrentUser();
-      const masterUserId = await this.getMasterUserId({ strict: true });
-      const isOnline = this.syncManager.getIsOnline();
-      const timestamps = addTimestamps({}, false);
-      const syncMetadata = addSyncMetadata({}, false);
-
-      const localContacts: LocalContact[] = [];
-      const syncQueueItems: any[] = [];
-      const errors: string[] = [];
-
-      console.log('Creating contacts:', {
-        count: contactsData.length,
-        masterUserId,
-        user: user.id
-      });
-
-      for (const contactData of contactsData) {
-        try {
-          const contactId = crypto.randomUUID();
-          // STRICT PHONE NORMALIZATION
-          let normalizedPhone = contactData.phone.replace(/[^\d]/g, '');
-          if (normalizedPhone.startsWith('0')) {
-            normalizedPhone = '62' + normalizedPhone.slice(1);
-          }
-
-          const newLocalContact: Omit<LocalContact, 'id'> = {
-            ...contactData,
-            phone: normalizedPhone,
-            master_user_id: masterUserId,
-            created_by: user.id,
-            is_blocked: contactData.is_blocked || false,
-            created_at: timestamps.created_at,
-            updated_at: timestamps.updated_at,
-            _syncStatus: syncMetadata._syncStatus,
-            _lastModified: syncMetadata._lastModified,
-            _version: syncMetadata._version,
-            _deleted: false
-          };
-
-          const localContact = { id: contactId, ...newLocalContact };
-          localContacts.push(localContact);
-
-          // Prepare sync data
-          const syncData = localToSupabase(localContact);
-          syncQueueItems.push({
-            table: 'contacts',
-            type: 'create',
-            id: contactId,
-            data: syncData
-          });
-
-        } catch (err) {
-          errors.push(`Failed to prepare contact ${contactData.name}: ${err}`);
-        }
-      }
-
-      // Batch Operations
-
-      // Server-First Approach for Bulk
-      if (isOnline) {
-        try {
-          const supabaseBatch = localContacts.map(c => localToSupabase(c));
-
-          // Chunking for Supabase/Postgres limits
-          const chunkSize = 100;
-          for (let i = 0; i < supabaseBatch.length; i += chunkSize) {
-            const chunk = supabaseBatch.slice(i, i + chunkSize);
-            const { error } = await supabase.from('contacts').insert(chunk);
-            if (error) throw error;
-          }
-
-          // Trigger Sync
-          await this.syncManager.triggerSync();
-
-          return {
-            success: true,
-            created: localContacts.length,
-            errors: []
-          };
-
-        } catch (e) {
-          console.error('Server-First Bulk Create Failed, falling back to Local:', e);
-          // Fallback to local
-        }
-      }
-
-      if (localContacts.length > 0) {
-        // Bulk add to local DB
-        await db.contacts.bulkAdd(localContacts);
-
-        // Queue sync items
-        for (const item of syncQueueItems) {
-          this.syncManager.addToSyncQueue(item.table, item.type, item.id, item.data)
-            .catch(e => console.warn('Failed to queue sync item:', e));
-        }
-
-        // Trigger sync if online
-        if (isOnline) {
-          this.backgroundSyncContacts();
-        }
-      }
-
-      return {
-        success: errors.length === 0,
-        created: localContacts.length,
-        errors
-      };
-
-    } catch (error) {
-      console.error('Error creating multiple contacts:', error);
-      return {
-        success: false,
-        created: 0,
-        errors: [error instanceof Error ? error.message : 'Unknown error']
-      };
-    }
+    return createContacts({
+      db,
+      user: await this.getCurrentUser(),
+      masterUserId: await this.getMasterUserId({ strict: true }),
+      isOnline: this.syncManager.getIsOnline(),
+      syncManager: this.syncManager,
+      backgroundSyncContacts: this.backgroundSyncContacts.bind(this)
+    }, contactsData);
   }
 
   /**
@@ -857,114 +755,11 @@ export class ContactService {
    * 4. Triggers full sync from Server to Local
    */
   async syncWhatsAppContactsDirectlyToServer(waContacts: Array<{ phone: string; name?: string }>): Promise<{ added: number; updated: number; errors: number }> {
-    try {
-      const masterUserId = await this.getMasterUserId();
-      const user = await this.getCurrentUser();
-      const timestamps = addTimestamps({}, false);
-
-      // 1. Fetch minimal map of existing Server contacts (ID, Phone)
-      // We need this to ensure we don't create duplicates and reuse IDs
-      const { data: serverContacts, error: fetchError } = await supabase
-        .from('contacts')
-        .select('id, phone, name')
-        .eq('master_user_id', masterUserId)
-        .eq('is_blocked', false);
-
-      if (fetchError) throw fetchError;
-
-      const serverPhoneMap = new Map<string, { id: string, name: string }>();
-      serverContacts?.forEach(c => {
-        // Normalize stored phone
-        const p = c.phone.replace(/[^\d]/g, '');
-        serverPhoneMap.set(p, { id: c.id, name: c.name });
-      });
-
-      const batchSize = 100;
-      const validContacts: any[] = [];
-      let addedCount = 0;
-      let updatedCount = 0;
-
-      // 2. Prepare Payload
-      for (const waContact of waContacts) {
-        let normalizedPhone = waContact.phone.replace(/[^\d]/g, '');
-        if (normalizedPhone.startsWith('0')) normalizedPhone = '62' + normalizedPhone.slice(1);
-
-        const existing = serverPhoneMap.get(normalizedPhone);
-        const contactName = waContact.name || existing?.name || normalizedPhone;
-
-        const isNameChanged = existing && existing.name !== contactName && waContact.name;
-
-        // If it's new OR name updated, we push to upsert list
-        // If it's existing and name is same, we generally skip to save bandwidth, 
-        // BUT for 'upsert' safety we might want to just push it if we want to update 'last_seen' or similar?
-        // For now, let's only push if New or Name Changed to optimize.
-
-        if (!existing) {
-          // NEW
-          validContacts.push({
-            id: crypto.randomUUID(),
-            master_user_id: masterUserId,
-            created_by: user.id,
-            name: contactName,
-            phone: normalizedPhone,
-            tags: ['WhatsApp'], // Array for Postgres
-            notes: 'Imported from WhatsApp',
-            is_blocked: false,
-            created_at: timestamps.created_at,
-            updated_at: timestamps.updated_at,
-            _lastModified: new Date().toISOString(),
-            _version: 1,
-            _deleted: false
-          });
-          addedCount++;
-        } else if (isNameChanged) {
-          // UPDATE
-          validContacts.push({
-            id: existing.id,
-            master_user_id: masterUserId,
-            updated_at: timestamps.updated_at,
-            name: contactName,
-            _lastModified: new Date().toISOString()
-            // Supabase upsert will ignore other fields if not provided? 
-            // No, upsert replaces. We must provide critical fields or use patch strategy.
-            // Actually, 'upsert' in Supabase (Postgres) updates columns provided.
-            // But better be safe with IDs.
-          });
-          updatedCount++;
-        }
-      }
-
-      // 3. Batch Upsert to Supabase
-      if (validContacts.length > 0) {
-        for (let i = 0; i < validContacts.length; i += batchSize) {
-          const batch = validContacts.slice(i, i + batchSize);
-          // We use upsert. 
-          // Note: RLS must allow this.
-          const { error: upsertError } = await supabase
-            .from('contacts')
-            .upsert(batch, { onConflict: 'id' }); // Upsert by ID
-
-          if (upsertError) {
-            console.error('Batch upsert failed:', upsertError);
-            // Continue to next batch? Or throw?
-            // Best to log and continue to try saving others
-          }
-        }
-      }
-
-      // 4. Trigger Full Sync (Server -> Local)
-      // This ensures local DB gets the merged state correctly.
-      console.log(`[ContactService] Server sync pushed. Added: ${addedCount}, Updated: ${updatedCount}. Triggering full pull...`);
-
-      // We force a sync.
-      await this.syncManager.triggerSync();
-
-      return { added: addedCount, updated: updatedCount, errors: 0 };
-
-    } catch (error) {
-      console.error('Error in server-first contact sync:', error);
-      return { added: 0, updated: 0, errors: 1 };
-    }
+    return syncWhatsAppContactsDirectlyToServer({
+      user: await this.getCurrentUser(),
+      masterUserId: await this.getMasterUserId(),
+      syncManager: this.syncManager
+    }, waContacts);
   }
 
   /**
@@ -1438,43 +1233,23 @@ export class ContactService {
   /**
    * Set up real-time subscription for contact updates
    */
+  /**
+   * Set up real-time subscription for contact updates
+   * @delegate ContactSyncService.subscribeToContactUpdates
+   */
   subscribeToContactUpdates(callback: (contact: ContactWithGroup, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
-    this.unsubscribeFromContactUpdates();
-
-    this.realtimeChannel = supabase
-      .channel('contacts')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'contacts'
-        },
-        async (payload) => {
-          const { new: newRecord, old: oldRecord, eventType } = payload;
-
-          if (eventType === 'DELETE') {
-            // Transform old record with standardized timestamps
-            const transformedOld = standardizeForService(oldRecord, 'contact');
-            callback(transformedOld as ContactWithGroup, 'DELETE');
-          } else {
-            // Transform new record with standardized timestamps
-            const transformedNew = standardizeForService(newRecord, 'contact');
-            callback(transformedNew as ContactWithGroup, eventType as 'INSERT' | 'UPDATE');
-          }
-        }
-      )
-      .subscribe();
+    this.contactSyncService.subscribeToContactUpdates(callback);
   }
 
   /**
    * Unsubscribe from contact updates
    */
+  /**
+   * Unsubscribe from contact updates
+   * @delegate ContactSyncService.unsubscribeFromContactUpdates
+   */
   unsubscribeFromContactUpdates() {
-    if (this.realtimeChannel) {
-      supabase.removeChannel(this.realtimeChannel);
-      this.realtimeChannel = null;
-    }
+    this.contactSyncService.unsubscribeFromContactUpdates();
   }
 
   /**
@@ -1529,48 +1304,36 @@ export class ContactService {
   /**
    * Force sync with server
    */
+  /**
+   * Force sync with server
+   * @delegate ContactSyncService.forceSync
+   */
   async forceSync(): Promise<void> {
-    await this.syncManager.triggerSync();
+    return this.contactSyncService.forceSync();
   }
 
   /**
    * Get sync status for contacts
    */
+  /**
+   * Get sync status for contacts
+   * @delegate ContactSyncService.getSyncStatus
+   */
   async getSyncStatus() {
-    const localContacts = await db.contacts
-      .where('master_user_id')
-      .equals(await this.getMasterUserId())
-      .and(contact => !contact._deleted)
-      .toArray();
-
-    const pending = localContacts.filter(c => c._syncStatus === 'pending').length;
-    const synced = localContacts.filter(c => c._syncStatus === 'synced').length;
-    const conflicts = localContacts.filter(c => c._syncStatus === 'conflict').length;
-
-    return {
-      total: localContacts.length,
-      pending,
-      synced,
-      conflicts,
-      syncManagerStatus: this.syncManager.getStatus()
-    };
+    return this.contactSyncService.getSyncStatus(this.masterUserId || await this.getMasterUserId());
   }
 
   /**
    * Get contacts filtered by lead status (CRM Pipeline)
    */
+  /**
+   * Get contacts by lead status (CRM Pipeline)
+   * @delegate ContactQueryService.getLocalContactsByLeadStatus
+   */
   async getContactsByLeadStatus(status: LeadStatus): Promise<ContactWithGroup[]> {
     try {
       const masterUserId = await this.getMasterUserId();
-
-      // Query IndexedDB using the new index
-      // Using filter for flexible matching just in case index isn't 100% ready or old version exists
-      const localContacts = await db.contacts
-        .where('master_user_id')
-        .equals(masterUserId)
-        .and(c => !c._deleted && c.lead_status === status)
-        .toArray();
-
+      const localContacts = await getLocalContactsByLeadStatus(masterUserId, status);
       return this.enrichContactsWithGroups(localContacts);
     } catch (error) {
       console.error(`Error fetching contacts with status ${status}:`, error);
@@ -1602,7 +1365,7 @@ export class ContactService {
 
   /**
    * Get CRM Statistics for Dashboard
-   * Aggregates local data for performance
+   * @delegate ContactCRMService.getCRMStats
    */
   async getCRMStats(): Promise<{
     totalLeads: number;
@@ -1610,100 +1373,29 @@ export class ContactService {
     winRate: number;
     estimatedRevenue: number;
     newLeadsThisMonth: number;
-    revenueGrowth: number; // Mocked for now (needs historical data)
+    revenueGrowth: number;
   }> {
-    await this.getMasterUserId();
-
-    const contacts = await db.contacts
-      .where('master_user_id')
-      .equals(this.masterUserId!)
-      .and(c => !c._deleted)
-      .toArray();
-
-    const totalLeads = contacts.length;
-
-    // Active deals: deal_value > 0 AND status is active (not won/lost/new)
-    // Actually, "Active Deals" usually means anything in pipeline except Closed/Lost
-    // Let's define Active as: status IN ['contacted', 'qualified', 'negotiation'] OR (value > 0 AND status != 'lost' AND status != 'won')
-    const activeDeals = contacts.filter(c => {
-      const status = c.lead_status || 'new';
-      return (status !== 'won' && status !== 'lost' && status !== 'new') || ((c.deal_value || 0) > 0 && status !== 'won' && status !== 'lost');
-    }).length;
-
-    // Win Rate: Won / (Won + Lost)
-    const wonCount = contacts.filter(c => c.lead_status === 'won').length;
-    const lostCount = contacts.filter(c => c.lead_status === 'lost').length;
-    const closedCount = wonCount + lostCount;
-    const winRate = closedCount > 0 ? (wonCount / closedCount) * 100 : 0;
-
-    // Estimated Revenue: Sum of deal_value for ACTIVE deals (not won/lost)
-    // Or should it be weighted? For simplicity: Sum of all open deal values.
-    const estimatedRevenue = contacts
-      .filter(c => {
-        const status = c.lead_status || 'new';
-        return status !== 'won' && status !== 'lost';
-      })
-      .reduce((sum, c) => sum + (c.deal_value || 0), 0);
-
-    // New leads this month
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const newLeadsThisMonth = contacts.filter(c => c.created_at >= firstDay).length;
-
-    return {
-      totalLeads,
-      activeDeals,
-      winRate,
-      estimatedRevenue,
-      newLeadsThisMonth,
-      revenueGrowth: 0 // Placeholder
-    };
+    const masterUserId = await this.getMasterUserId();
+    return _getCRMStats(masterUserId);
   }
 
   /**
    * Get Sales Funnel Data
-   * Counts contacts per stage
+   * @delegate ContactCRMService.getSalesFunnel
    */
   async getSalesFunnel(): Promise<Record<string, number>> {
-    await this.getMasterUserId();
-    const contacts = await db.contacts
-      .where('master_user_id')
-      .equals(this.masterUserId!)
-      .and(c => !c._deleted)
-      .toArray();
-
-    const funnel: Record<string, number> = {
-      new: 0,
-      contacted: 0,
-      qualified: 0,
-      negotiation: 0,
-      won: 0,
-      lost: 0
-    };
-
-    contacts.forEach(c => {
-      const status = c.lead_status || 'new';
-      if (funnel[status] !== undefined) {
-        funnel[status]++;
-      } else {
-        funnel['new']++;
-      }
-    });
-
-    return funnel;
+    const masterUserId = await this.getMasterUserId();
+    return _getSalesFunnel(masterUserId);
   }
 
+  /**
+   * Get recent activity contacts
+   * @delegate ContactCRMService.getRecentActivityContacts
+   */
   async getRecentActivity(limit = 5): Promise<ContactWithGroup[]> {
-    await this.getMasterUserId();
-    // Get contacts updated recently with non-new status or high deal value
-    const contacts = await db.contacts
-      .where('master_user_id')
-      .equals(this.masterUserId!)
-      .and(c => !c._deleted)
-      .reverse()
-      .sortBy('updated_at');
-
-    return this.transformLocalContacts(contacts.slice(0, limit));
+    const masterUserId = await this.getMasterUserId();
+    const contacts = await _getRecentActivityContacts(masterUserId, limit);
+    return this.transformLocalContacts(contacts);
   }
 
   /**

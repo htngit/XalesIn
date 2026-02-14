@@ -56,6 +56,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
     // Subscribe to IPC events
     useEffect(() => {
+        console.log('[DEBUG-LOOP] CampaignContext MOUNTED');
         // 1. Progress Listener
         // @ts-ignore
         const unsubscribeProgress = window.electron?.whatsapp?.onJobProgress?.((p: any) => {
@@ -109,6 +110,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         syncState();
 
         return () => {
+            console.log('[DEBUG-LOOP] CampaignContext UNMOUNTED');
             if (unsubscribeProgress) unsubscribeProgress();
         };
     }, [clearActiveTask, setActiveTask]);

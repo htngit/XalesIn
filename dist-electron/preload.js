@@ -1,1 +1,101 @@
-"use strict";const e=require("electron");e.contextBridge.exposeInMainWorld("electron",{whatsapp:{connect:()=>e.ipcRenderer.invoke("whatsapp:connect"),disconnect:()=>e.ipcRenderer.invoke("whatsapp:disconnect"),sendMessage:(n,r,t)=>e.ipcRenderer.invoke("whatsapp:send-message",{to:n,content:r,assets:t}),getStatus:()=>e.ipcRenderer.invoke("whatsapp:get-status"),getClientInfo:()=>e.ipcRenderer.invoke("whatsapp:get-client-info"),processJob:(n,r,t)=>e.ipcRenderer.invoke("whatsapp:process-job",{jobId:n,contacts:r,template:t.template,assets:t.assets,delayConfig:{mode:t.mode,delayRange:t.delayRange}}),pauseJob:n=>e.ipcRenderer.invoke("whatsapp:pause-job",{jobId:n}),resumeJob:n=>e.ipcRenderer.invoke("whatsapp:resume-job",{jobId:n}),stopJob:n=>e.ipcRenderer.invoke("whatsapp:stop-job",{jobId:n}),getJobStatus:()=>e.ipcRenderer.invoke("whatsapp:get-job-status"),resyncContacts:()=>e.ipcRenderer.invoke("whatsapp:resync-contacts"),fetchHistory:()=>e.ipcRenderer.invoke("whatsapp:fetch-history"),onQRCode:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:qr-code",r),()=>{e.ipcRenderer.removeListener("whatsapp:qr-code",r)}},onStatusChange:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:status-change",r),()=>{e.ipcRenderer.removeListener("whatsapp:status-change",r)}},onMessageReceived:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:message-received",r),()=>{e.ipcRenderer.removeListener("whatsapp:message-received",r)}},onContactsReceived:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:contacts-received",r),()=>{e.ipcRenderer.removeListener("whatsapp:contacts-received",r)}},onError:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:error",r),()=>{e.ipcRenderer.removeListener("whatsapp:error",r)}},onSyncStatus:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:sync-status",r),()=>{e.ipcRenderer.removeListener("whatsapp:sync-status",r)}},onJobProgress:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:job-progress",r),()=>{e.ipcRenderer.removeListener("whatsapp:job-progress",r)}},onJobErrorDetail:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("whatsapp:job-error-detail",r),()=>{e.ipcRenderer.removeListener("whatsapp:job-error-detail",r)}}},mapScraping:{scrape:(n,r,t="bing",s=[])=>e.ipcRenderer.invoke("maps:scrape",{keyword:n,limit:r,platform:t,existingPhones:s}),finalize:n=>e.ipcRenderer.invoke("maps:finalize",{scrapedData:n}),cancel:()=>e.ipcRenderer.invoke("maps:cancel"),getStatus:()=>e.ipcRenderer.invoke("maps:get-status"),onProgress:n=>{const r=(t,s)=>n(s);return e.ipcRenderer.on("maps:progress",r),()=>{e.ipcRenderer.removeListener("maps:progress",r)}}}});
+"use strict";
+const electron = require("electron");
+electron.contextBridge.exposeInMainWorld("electron", {
+  whatsapp: {
+    // Connection methods
+    connect: () => electron.ipcRenderer.invoke("whatsapp:connect"),
+    disconnect: () => electron.ipcRenderer.invoke("whatsapp:disconnect"),
+    // Messaging methods
+    sendMessage: (to, content, assets) => electron.ipcRenderer.invoke("whatsapp:send-message", { to, content, assets }),
+    // Status methods
+    getStatus: () => electron.ipcRenderer.invoke("whatsapp:get-status"),
+    getClientInfo: () => electron.ipcRenderer.invoke("whatsapp:get-client-info"),
+    // Job processing methods (for Week 3)
+    // Updated to accept options object from SendPage: { template, assets, mode, delayRange }
+    processJob: (jobId, contacts, options) => electron.ipcRenderer.invoke("whatsapp:process-job", {
+      jobId,
+      contacts,
+      template: options.template,
+      // Extract template from options
+      assets: options.assets,
+      delayConfig: { mode: options.mode, delayRange: options.delayRange }
+    }),
+    pauseJob: (jobId) => electron.ipcRenderer.invoke("whatsapp:pause-job", { jobId }),
+    resumeJob: (jobId) => electron.ipcRenderer.invoke("whatsapp:resume-job", { jobId }),
+    stopJob: (jobId) => electron.ipcRenderer.invoke("whatsapp:stop-job", { jobId }),
+    getJobStatus: () => electron.ipcRenderer.invoke("whatsapp:get-job-status"),
+    resyncContacts: () => electron.ipcRenderer.invoke("whatsapp:resync-contacts"),
+    fetchHistory: () => electron.ipcRenderer.invoke("whatsapp:fetch-history"),
+    // Event listeners
+    onQRCode: (callback) => {
+      const subscription = (_event, qr) => callback(qr);
+      electron.ipcRenderer.on("whatsapp:qr-code", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:qr-code", subscription);
+      };
+    },
+    onStatusChange: (callback) => {
+      const subscription = (_event, status) => callback(status);
+      electron.ipcRenderer.on("whatsapp:status-change", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:status-change", subscription);
+      };
+    },
+    onMessageReceived: (callback) => {
+      const subscription = (_event, data) => callback(data);
+      electron.ipcRenderer.on("whatsapp:message-received", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:message-received", subscription);
+      };
+    },
+    onContactsReceived: (callback) => {
+      const subscription = (_event, contacts) => callback(contacts);
+      electron.ipcRenderer.on("whatsapp:contacts-received", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:contacts-received", subscription);
+      };
+    },
+    onError: (callback) => {
+      const subscription = (_event, error) => callback(error);
+      electron.ipcRenderer.on("whatsapp:error", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:error", subscription);
+      };
+    },
+    onSyncStatus: (callback) => {
+      const subscription = (_event, status) => callback(status);
+      electron.ipcRenderer.on("whatsapp:sync-status", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:sync-status", subscription);
+      };
+    },
+    onJobProgress: (callback) => {
+      const subscription = (_event, progress) => callback(progress);
+      electron.ipcRenderer.on("whatsapp:job-progress", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:job-progress", subscription);
+      };
+    },
+    onJobErrorDetail: (callback) => {
+      const subscription = (_event, errorDetail) => callback(errorDetail);
+      electron.ipcRenderer.on("whatsapp:job-error-detail", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("whatsapp:job-error-detail", subscription);
+      };
+    }
+  },
+  // Map Scraping API
+  mapScraping: {
+    scrape: (keyword, limit, platform = "bing", existingPhones = []) => electron.ipcRenderer.invoke("maps:scrape", { keyword, limit, platform, existingPhones }),
+    finalize: (scrapedData) => electron.ipcRenderer.invoke("maps:finalize", { scrapedData }),
+    cancel: () => electron.ipcRenderer.invoke("maps:cancel"),
+    getStatus: () => electron.ipcRenderer.invoke("maps:get-status"),
+    onProgress: (callback) => {
+      const subscription = (_event, progress) => callback(progress);
+      electron.ipcRenderer.on("maps:progress", subscription);
+      return () => {
+        electron.ipcRenderer.removeListener("maps:progress", subscription);
+      };
+    }
+  }
+});

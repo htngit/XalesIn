@@ -102,15 +102,21 @@ export function JobProgressModal({ jobId, open, onClose }: JobProgressModalProps
                     <div className="grid grid-cols-3 gap-4 text-center">
                         <div className="bg-slate-50 p-3 rounded-lg">
                             <p className="text-2xl font-bold text-slate-700">{progress.processed}/{progress.total}</p>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Processed</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                <FormattedMessage id="send.progress.processed" defaultMessage="Processed" />
+                            </p>
                         </div>
                         <div className="bg-green-50 p-3 rounded-lg">
                             <p className="text-2xl font-bold text-green-600">{progress.success}</p>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Success</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                <FormattedMessage id="send.progress.success" defaultMessage="Success" />
+                            </p>
                         </div>
                         <div className="bg-red-50 p-3 rounded-lg">
                             <p className="text-2xl font-bold text-red-600">{progress.failed}</p>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Failed</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                <FormattedMessage id="send.progress.failed" defaultMessage="Failed" />
+                            </p>
                         </div>
                     </div>
 

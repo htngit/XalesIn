@@ -1,6 +1,4 @@
-import { templateService } from './TemplateService';
-import { assetService } from './AssetService';
-import { quotaService } from './QuotaService';
+import { serviceManager } from './ServiceInitializationManager';
 import { userContextManager } from '../security/UserContextManager';
 
 
@@ -67,7 +65,7 @@ class PreflightService {
                 field: 'template'
             });
         } else {
-            const template = await templateService.getTemplateById(params.templateId);
+            const template = await serviceManager.getTemplateService().getTemplateById(params.templateId);
 
             if (!template) {
                 errors.push({
@@ -98,7 +96,7 @@ class PreflightService {
         // 3. Validate Assets
         if (params.assetIds && params.assetIds.length > 0) {
             for (const assetId of params.assetIds) {
-                const asset = await assetService.getAssetById(assetId);
+                const asset = await serviceManager.getAssetService().getAssetById(assetId);
                 if (!asset) {
                     errors.push({
                         code: 'ASSET_NOT_FOUND',
@@ -114,7 +112,7 @@ class PreflightService {
         // 4. Validate Quota (Optional - usually done at send time, but good to check early)
         if (params.checkQuota && params.contactCount > 0) {
             try {
-                const hasQuota = await quotaService.hasSufficientQuota(userId, params.contactCount);
+                const hasQuota = await serviceManager.getQuotaService().hasSufficientQuota(userId, params.contactCount);
                 if (!hasQuota) {
                     errors.push({
                         code: 'INSUFFICIENT_QUOTA',
@@ -150,10 +148,10 @@ class PreflightService {
             // Force sync logic for specific template could go here
             // For now, we rely on the service's sync mechanism
             // We could force a quick check with the server
-            await templateService.forceSync();
+            await serviceManager.getTemplateService().forceSync();
 
             // Verify it exists after sync
-            const template = await templateService.getTemplateById(templateId);
+            const template = await serviceManager.getTemplateService().getTemplateById(templateId);
             return !!template;
         } catch (error) {
             console.error('Template sync ensure failed:', error);
@@ -171,7 +169,7 @@ class PreflightService {
         try {
             // Using the prefetch capability of AssetService
             // Note: We need to implement/expose retry logic in AssetService/WhatsAppManager later as per plan
-            const result = await assetService.prefetchAssets(assetIds);
+            const result = await serviceManager.getAssetService().prefetchAssets(assetIds);
             return result.failed === 0;
         } catch (error) {
             console.error('Asset readiness ensure failed:', error);

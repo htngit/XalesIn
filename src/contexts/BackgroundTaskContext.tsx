@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 
 export type BackgroundTaskType = 'none' | 'scraping' | 'campaign';
 
@@ -70,14 +70,16 @@ export function BackgroundTaskProvider({ children }: { children: ReactNode }) {
         }
     }, [activeTask]);
 
+    const contextValue = useMemo(() => ({
+        activeTask,
+        canStartTask,
+        setActiveTask,
+        clearActiveTask,
+        getActiveTaskName
+    }), [activeTask, canStartTask, setActiveTask, clearActiveTask, getActiveTaskName]);
+
     return (
-        <BackgroundTaskContext.Provider value={{
-            activeTask,
-            canStartTask,
-            setActiveTask,
-            clearActiveTask,
-            getActiveTaskName
-        }}>
+        <BackgroundTaskContext.Provider value={contextValue}>
             {children}
         </BackgroundTaskContext.Provider>
     );
