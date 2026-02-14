@@ -149,7 +149,7 @@ export function CRMDashboard({ stats, recentActivity = [], isLoading = false }: 
                                         <div className="space-y-1">
                                             <p className="text-sm font-medium leading-none truncate max-w-[200px]">{contact.name}</p>
                                             <p className="text-xs text-muted-foreground capitalize">
-                                                {contact.lead_status || 'new'} • {contact.updated_at ? formatDistanceToNow(new Date(contact.updated_at), { addSuffix: true }) : 'Recently'}
+                                                {contact.lead_status || intl.formatMessage({ id: 'common.status.new', defaultMessage: 'new' })} • {contact.updated_at ? formatDistanceToNow(new Date(contact.updated_at), { addSuffix: true }) : intl.formatMessage({ id: 'common.time.recently', defaultMessage: 'Recently' })}
                                             </p>
                                         </div>
                                         <div className="ml-auto font-medium">
@@ -171,34 +171,11 @@ export function CRMDashboard({ stats, recentActivity = [], isLoading = false }: 
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
-                            {[
-                                {
-                                    title: intl.formatMessage({ id: 'dashboard.crm.interaction.demo', defaultMessage: 'Demo with Product Team' }),
-                                    time: intl.formatMessage({ id: 'dashboard.crm.time.today', defaultMessage: 'Today, {time}' }, { time: '2:00 PM' }),
-                                    type: intl.formatMessage({ id: 'dashboard.crm.interaction.type.meeting', defaultMessage: 'Meeting' })
-                                },
-                                {
-                                    title: intl.formatMessage({ id: 'dashboard.crm.interaction.contract', defaultMessage: 'Contract Review' }),
-                                    time: intl.formatMessage({ id: 'dashboard.crm.time.tomorrow', defaultMessage: 'Tomorrow, {time}' }, { time: '10:00 AM' }),
-                                    type: intl.formatMessage({ id: 'dashboard.crm.interaction.type.call', defaultMessage: 'Call' })
-                                },
-                                {
-                                    title: intl.formatMessage({ id: 'dashboard.crm.interaction.followup', defaultMessage: 'Follow-up Email' }),
-                                    time: intl.formatMessage({ id: 'dashboard.crm.time.weekday', defaultMessage: '{day}, {time}' }, { day: 'Fri', time: '4:00 PM' }),
-                                    type: intl.formatMessage({ id: 'dashboard.crm.interaction.type.email', defaultMessage: 'Email' })
-                                },
-                            ].map((task, i) => (
-                                <div key={i} className="flex items-center p-3 border rounded-lg bg-gray-50/50">
-                                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-3">
-                                        <Calendar className="h-4 w-4" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium">{task.title}</p>
-                                        <p className="text-xs text-muted-foreground">{task.time}</p>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Calendar className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                            <p className="text-sm text-muted-foreground">
+                                <FormattedMessage id="dashboard.crm.no_activity" defaultMessage="No upcoming interactions scheduled." />
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
