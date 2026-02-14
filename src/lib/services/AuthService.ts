@@ -14,6 +14,18 @@ export class AuthService {
     try {
       console.log('Starting login process for:', email);
 
+      // === FRESH SESSION GUARANTEE ===
+      // Always clear sync timestamps on login to prevent stale/corrupted
+      // timestamps from a previous session causing 400 errors.
+      // This is critical because logout may not have completed cleanly.
+      try {
+        const { syncManager } = await import('../sync/SyncManager');
+        await syncManager.clearSyncTimestamps();
+        console.log('[AuthService] Cleared sync timestamps for fresh session');
+      } catch (cleanupError) {
+        console.warn('[AuthService] Failed to clear sync timestamps on login:', cleanupError);
+      }
+
       // Online mode: perform full authentication with Supabase
       const { user, session } = await authHelpers.signInWithEmail(email, password);
 
@@ -206,34 +218,52 @@ export class AuthService {
 
   // Logout from Supabase
   async logout(): Promise<void> {
+    // Capture user ID BEFORE any cleanup that might fail
+    let masterUserId: string | null = null;
     try {
-      // Get current user ID before logging out to clear user data
       const currentUser = await this.getCurrentUser();
-      if (currentUser?.master_user_id) {
-        // Clear user data from local storage before signing out
-        await db.clearUserData(currentUser.master_user_id);
-      }
+      masterUserId = currentUser?.master_user_id || null;
+    } catch (e) {
+      console.warn('[AuthService] Could not get current user during logout:', e);
+    }
 
+    try {
       // Online mode: perform full logout with Supabase
       await authHelpers.signOut();
-
-      // Clear sync timestamps to ensure fresh sync on next login
-      if (this.syncManager) {
-        await this.syncManager.clearSyncTimestamps();
-      } else {
-        // Fallback if syncManager not injected
-        const { syncManager } = await import('../sync/SyncManager');
-        await syncManager.clearSyncTimestamps();
-      }
     } catch (error) {
-      console.error('Logout error:', error);
-      throw error;
+      // Log but DO NOT throw — we must still clean up local state
+      console.error('[AuthService] Supabase signOut error (continuing cleanup):', error);
     } finally {
-      // Clear local storage preferences - ALWAYS run this
+      // === UNCONDITIONAL LOCAL CLEANUP ===
+      // This block ALWAYS runs, even if signOut() fails.
+      // This prevents "zombie" sessions with stale sync state.
+
+      // 1. Clear user data from IndexedDB
+      if (masterUserId) {
+        try {
+          await db.clearUserData(masterUserId);
+        } catch (e) {
+          console.error('[AuthService] Failed to clear user data from DB:', e);
+        }
+      }
+
+      // 2. Clear sync timestamps from localStorage
+      try {
+        if (this.syncManager) {
+          await this.syncManager.clearSyncTimestamps();
+        } else {
+          const { syncManager } = await import('../sync/SyncManager');
+          await syncManager.clearSyncTimestamps();
+        }
+      } catch (e) {
+        console.error('[AuthService] Failed to clear sync timestamps:', e);
+      }
+
+      // 3. Clear local storage preferences
       try {
         localStorage.removeItem('xenderin_hide_safety_warning');
       } catch (e) {
-        console.error('Failed to clear local storage:', e);
+        console.error('[AuthService] Failed to clear local storage prefs:', e);
       }
     }
   }

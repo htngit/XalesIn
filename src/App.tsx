@@ -408,6 +408,12 @@ const MainApp = () => {
       });
     }
 
+    // Always clear sync timestamps to ensure a fresh session,
+    // even for the same user (previous logout may have failed).
+    syncManager.clearSyncTimestamps().catch(error => {
+      console.warn('[App] Failed to clear sync timestamps on login:', error);
+    });
+
     setAuthData(data);
     // Do NOT set PIN data yet. User must enter PIN.
 

@@ -1488,11 +1488,24 @@ export class SyncManager {
   }
   /**
    * Get last sync time for a table
+   * Validates the stored timestamp to prevent sending corrupted values to the server.
    */
   private async getLastSyncTime(tableName: string): Promise<string> {
     const key = `last_sync_${tableName}`;
     const stored = localStorage.getItem(key);
-    return stored ? stored : new Date(0).toISOString();
+    const epoch = new Date(0).toISOString();
+
+    if (!stored) return epoch;
+
+    // Validate: check if it's a parseable date string
+    const parsed = new Date(stored);
+    if (isNaN(parsed.getTime())) {
+      console.warn(`SyncManager: Corrupted timestamp found for '${key}': '${stored}'. Resetting to epoch.`);
+      localStorage.removeItem(key);
+      return epoch;
+    }
+
+    return stored;
   }
 
   /**
